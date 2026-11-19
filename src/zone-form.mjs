@@ -1,4 +1,5 @@
 // Converts the operator form (plain strings) into a feed zone; the server re-validates the whole feed.
+const WEEKDAYS = '일월화수목금토';
 const fail = (message) => { throw new Error(message); };
 const number = (value, label) => { const n = Number(String(value).trim()); if (String(value).trim() === '' || !Number.isFinite(n)) fail(`${label}을(를) 숫자로 입력하세요.`); return n; };
 const lines = (text) => String(text).split('\n').map((line) => line.trim()).filter(Boolean);
@@ -19,8 +20,10 @@ export function buildZone(form) {
   const layouts = lines(form.layouts).map((line) => { const [capacity, effectiveWidthM] = pair(line, '배치'); return { capacity, effectiveWidthM }; });
   if (!layouts.length) fail('측정한 배치를 1개 이상 입력하세요.');
   const windows = lines(form.windows).map((line) => {
-    const match = /^(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})$/.exec(line); if (!match) fail(`운영시간 "${line}"은 HH:mm-HH:mm 형식이어야 합니다.`);
-    return { start: match[1], end: match[2] };
+    const match = /^(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})(?:\s+([일월화수목금토](?:\s*,\s*[일월화수목금토])*))?$/.exec(line);
+    if (!match) fail(`운영시간 "${line}"은 HH:mm-HH:mm 또는 HH:mm-HH:mm 월,화 형식이어야 합니다.`);
+    const days = match[3] ? [...new Set(match[3].split(',').map((d) => WEEKDAYS.indexOf(d.trim())))].sort() : null;
+    return { start: match[1], end: match[2], ...(days ? { days } : {}) };
   });
   const vehicleTypes = [form.scooter && 'scooter', form.ebike && 'ebike'].filter(Boolean);
   if (!vehicleTypes.length) fail('허용 기기를 1개 이상 선택하세요.');
@@ -44,7 +47,7 @@ export function zoneToForm(zone) {
     id: zone.id, name: zone.name, address: zone.address, lat: String(zone.point[0]), lng: String(zone.point[1]),
     boundary: ring.map((p) => p.join(', ')).join('\n'), scooter: zone.vehicleTypes.includes('scooter'), ebike: zone.vehicleTypes.includes('ebike'),
     parkingAuthorized: zone.parkingAuthorized === true, capacityAppliesToAllTypes: zone.capacityAppliesToAllTypes === true,
-    layouts: zone.layouts.map((l) => `${l.capacity}, ${l.effectiveWidthM}`).join('\n'), windows: zone.windows.map((w) => `${w.start}-${w.end}`).join('\n'),
+    layouts: zone.layouts.map((l) => `${l.capacity}, ${l.effectiveWidthM}`).join('\n'), windows: zone.windows.map((w) => `${w.start}-${w.end}${w.days ? ` ${w.days.map((d) => WEEKDAYS[d]).join(',')}` : ''}`).join('\n'),
     preCloseMinutes: zone.preClose ? String(zone.preClose.minutes) : '', preCloseCapacity: zone.preClose ? String(zone.preClose.capacity) : '',
     count15: String(zone.observation?.pedestrianCount15Min ?? ''), observedAt: koreaInput(Date.now()), observationMinutes: '15', observationSource: zone.observation?.source ?? '',
     parked: String(zone.inventory?.parked ?? ''), reserved: String(zone.inventory?.reserved ?? '0'), inventoryAt: koreaInput(Date.now()), inventoryMinutes: '15',

@@ -53,3 +53,24 @@ test('admin registers, validates, approves profile and deletes zones in the serv
     });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('named admin accounts are logged per change and malformed account lists fail closed', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'admin-')); const feedPath = join(dir, 'feed.json');
+  const kim = 'kim-token-0123456789abcdef-0123456789'; const lee = 'lee-token-0123456789abcdef-0123456789';
+  const zone = serviceFixture(at).zones[0];
+  try {
+    for (const adminTokens of [`kim:${kim},kim:${lee}`, `kim:short`, `:${kim}`, `kim ${kim}`]) {
+      await withServer({ feedPath, adminTokens, adminToken: '' }, async (call) => assert.equal((await call('GET', '/api/admin/feed', null, kim)).status, 503));
+    }
+    await withServer({ feedPath, adminTokens: `kim:${kim}, 이운영:${lee}`, adminToken: '' }, async (call) => {
+      assert.equal((await (await call('GET', '/api/admin/feed', null, lee)).json()).admin, '이운영');
+      assert.equal((await call('PUT', '/api/admin/zones/a', zone, kim)).status, 200);
+      assert.equal((await call('PUT', '/api/admin/profile', { approvedForService: true }, lee)).status, 200);
+      assert.equal((await call('DELETE', '/api/admin/zones/a', null, kim)).status, 200);
+      assert.equal((await call('DELETE', '/api/admin/zones/a', null, kim)).status, 400);
+      const { entries } = await (await call('GET', '/api/admin/log', null, lee)).json();
+      assert.deepEqual(entries.map((e) => [e.admin, e.action, e.zoneId]), [['kim', 'delete-zone', 'a'], ['이운영', 'approve-profile', undefined], ['kim', 'save-zone', 'a']]);
+      assert.ok(entries.every((e) => e.at === at));
+    });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
