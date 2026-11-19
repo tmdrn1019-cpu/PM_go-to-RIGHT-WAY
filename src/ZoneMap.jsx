@@ -9,7 +9,7 @@ import { visibleMapCenterY } from './zone-search.mjs';
 const names = { open: '개방', reduced: '축소 운영', closed: '폐쇄', unknown: '확인 중' };
 const pilotCenter = [37.4827, 126.941];
 
-export default function ZoneMap({ zones, vehicles = [], towingAreas, selectedId, onSelect, onBoundsChange, focus, position, bottomFraction = 0 }) {
+export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [], towingAreas, selectedId, onSelect, onBoundsChange, focus, position, bottomFraction = 0 }) {
   const element = useRef(null); const map = useRef(null); const layer = useRef(null);
   const towingLayer = useRef(null);
   const [tileError, setTileError] = useState(false);
@@ -33,6 +33,12 @@ export default function ZoneMap({ zones, vehicles = [], towingAreas, selectedId,
     const css = getComputedStyle(element.current);
     const color = (token) => css.getPropertyValue(token).trim() || css.color;
     const palette = { open: color('--color-success'), reduced: color('--color-warning'), closed: color('--color-error'), unknown: color('--color-text-secondary') };
+    // Demo overlays: meter-radius towing circles and mission paths, drawn under the zones.
+    for (const area of areas) {
+      const label = document.createElement('strong'); label.textContent = area.label;
+      L.circle(area.point, { radius: area.radiusM, color: color('--color-error'), weight: 1, dashArray: '4 4', fillOpacity: 0.08 }).addTo(layer.current).bindTooltip(label);
+    }
+    for (const route of routes) L.polyline(route, { color: color('--color-accent'), weight: 3, dashArray: '6 6', interactive: false }).addTo(layer.current);
     for (const zone of zones) {
       const selected = zone.id === selectedId;
       const shape = L.polygon(zone.boundary, { color: palette[zone.status], weight: selected ? 4 : 2, fillOpacity: selected ? 0.4 : 0.18 }).addTo(layer.current);
@@ -51,7 +57,7 @@ export default function ZoneMap({ zones, vehicles = [], towingAreas, selectedId,
       L.circle(position.point, { radius: Math.min(position.accuracy, 5000), color: color('--color-accent'), weight: 1, fillOpacity: 0.07, interactive: false }).addTo(layer.current);
       L.circleMarker(position.point, { radius: 7, color: color('--color-accent'), fillOpacity: 1, interactive: false }).addTo(layer.current);
     }
-  }, [zones, vehicles, selectedId, onSelect, position]);
+  }, [zones, vehicles, areas, routes, selectedId, onSelect, position]);
   useEffect(() => {
     if (!map.current) return;
     towingLayer.current.clearLayers();

@@ -39,6 +39,10 @@ export default function DemoPage() {
   const zoneName = (id) => state?.zones.find((z) => z.id === id)?.name ?? id;
   const active = state?.missions.find((m) => ['moving', 'verifying'].includes(m.status));
   const report = (mission, point, label) => send({ type: 'position', missionId: mission.id, point, accuracy: 8, observedAt: state.now }, label);
+  const areas = useMemo(() => (state?.towingAreas ?? []).map((a) => ({ point: a.point, radiusM: a.radiusM, label: `${a.name} · 반경 ${a.radiusM}m (시연 가정값)` })), [state]);
+  const routes = useMemo(() => (active ? [active.route] : []), [active]);
+  // Zoom to each new mission's route so a 30m towing circle and the short exit move are visible.
+  useEffect(() => { if (active) setFocus({ points: active.route }); }, [active?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const onBoundsChange = useCallback(() => {}, []);
   const onSelect = useCallback(() => {}, []);
 
@@ -86,7 +90,7 @@ export default function DemoPage() {
           <Text type="label">{offer.id} · {offer.originName}</Text>
           {offer.destinations.length ? <>
             <Selector label={`${offer.id} 목적지`} value={chosen} onChange={(value) => setDestinations((prev) => ({ ...prev, [offer.id]: value }))} options={offer.destinations.map((d) => ({ value: d.id, label: `${d.name} · ${d.distanceM}m · ${d.id === 'exit' ? '가장 짧은 이동 · 정원·보행량 확인 없음' : `여유 ${d.available}대`}` }))} />
-            <Button label={`${offer.id} 미션 수락·잠금 해제`} size="sm" isDisabled={busy} onClick={() => { send({ type: 'accept', scooterId: offer.id, destinationId: chosen, failUnlock }, '모의 잠금 해제에 성공했습니다. 걸어서 끌고 이동하세요.'); setFocus({ points: [offer.destinations.find((d) => d.id === chosen) && state.zones.find((z) => z.id === chosen).point, state.zones.find((z) => z.id === offer.zoneId)?.point].filter(Boolean) }); }} />
+            <Button label={`${offer.id} 미션 수락·잠금 해제`} size="sm" isDisabled={busy} onClick={() => { send({ type: 'accept', scooterId: offer.id, destinationId: chosen, failUnlock }, '모의 잠금 해제에 성공했습니다. 걸어서 끌고 이동하세요.'); }} />
           </> : <Text type="supporting">걸어서 {state.policy.maxMoveM ?? 300}m 안에 받을 수 있는 열린 존이 없어 운영사 인계 대상입니다.</Text>}
         </VStack>;
       })}</VStack>
@@ -112,7 +116,7 @@ export default function DemoPage() {
     {mobile ? <VStack padding={4} gap={4} isScrollable style={{ height: '100%' }}>{panel}</VStack>
       : <HStack height="100%" gap={0} style={{ minHeight: 0, overflow: 'hidden' }}>
         <VStack as="aside" width="26rem" height="100%" padding={5} gap={4} isScrollable style={{ flexShrink: 0, borderInlineEnd: 'var(--border-width) solid var(--color-border)', background: 'var(--color-background-surface)' }} aria-label="이동 미션 시연 패널">{panel}</VStack>
-        <VStack height="100%" style={{ flex: 1, minWidth: 0, position: 'relative' }}><ZoneMap zones={zones} selectedId={null} onSelect={onSelect} onBoundsChange={onBoundsChange} focus={focus ?? overview} position={position} /></VStack>
+        <VStack height="100%" style={{ flex: 1, minWidth: 0, position: 'relative' }}><ZoneMap zones={zones} areas={areas} routes={routes} selectedId={null} onSelect={onSelect} onBoundsChange={onBoundsChange} focus={focus ?? overview} position={position} /></VStack>
       </HStack>}
   </AppShell>;
 }
