@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDemo, snapshot, command } from '../server/simulation.mjs';
-import { evaluateZone } from '../server/engine.mjs';
+import { evaluateZone, distanceM } from '../server/engine.mjs';
+import { demoTowingAreas } from '../server/fixtures.mjs';
 
 function accept(state, scooterId = 'PM-001') {
   return command(state, { type: 'accept', scooterId, destinationId: 'z2' });
@@ -135,4 +136,41 @@ test('오차 범위가 출발 존에 걸치면 주차 공간을 비우지 않는
   const origin = state.zones.find((z) => z.id === 'z1');
   command(state, { type: 'position', missionId: mission.id, point: [origin.point[0] + 0.00021, origin.point[1]], accuracy: 30, observedAt: state.now });
   assert.equal(state.scooters[0].zoneId, 'z1');
+});
+
+test('걸어서 옮길 수 있는 최대 거리 밖의 존은 목적지로 주지 않고 수락도 거절한다', () => {
+  const state = createDemo();
+  const zonesOf = (offer) => offer.destinations.filter((d) => d.id !== 'exit').map((d) => d.id);
+  const view = snapshot(state);
+  assert.deepEqual(zonesOf(view.offers.find((o) => o.zoneId === 'z1')), ['z2']);
+  assert.deepEqual(zonesOf(view.offers.find((o) => o.zoneId === 'z3')), ['z4']);
+  assert.ok(view.offers.every((o) => o.destinations.every((d) => d.distanceM <= state.policy.maxMoveM)));
+  state.policy.maxMoveM = 100;
+  const far = snapshot(state).offers.find((o) => o.zoneId === 'z3');
+  assert.deepEqual(zonesOf(far), []);
+  assert.throws(() => command(state, { type: 'accept', scooterId: far.id, destinationId: 'z4' }), /거리를 넘습니다/);
+  delete state.policy.maxMoveM;
+  assert.deepEqual(zonesOf(snapshot(state).offers.find((o) => o.id === 'PM-001')), ['z2']);
+});
+
+test('견인 구역 안의 기기는 구역 경계 바로 밖까지 가장 짧게 옮기는 목적지를 먼저 받는다', () => {
+  const state = createDemo();
+  const offer = snapshot(state).offers.find((o) => o.id === 'PM-001');
+  const [exit, zone] = offer.destinations;
+  assert.equal(exit.id, 'exit');
+  assert.ok(exit.distanceM < zone.distanceM && exit.distanceM <= 40, `${exit.distanceM}m`);
+  const area = demoTowingAreas.find((a) => a.id === exit.towingAreaId);
+  assert.ok(Math.abs(distanceM(exit.point, area.point) - (area.radiusM + state.policy.exitMarginM)) < 0.5);
+  const mission = command(state, { type: 'accept', scooterId: 'PM-001', destinationId: 'exit' });
+  const complete = { type: 'complete', missionId: mission.id, verdict: 'approved', photoPresent: true };
+  command(state, { type: 'position', missionId: mission.id, point: area.point, accuracy: 5, observedAt: state.now });
+  assert.throws(() => command(state, complete), /견인 구역을 벗어난/);
+  command(state, { type: 'position', missionId: mission.id, point: mission.target, accuracy: 25, observedAt: state.now });
+  assert.throws(() => command(state, complete), /견인 구역을 벗어난/);
+  command(state, { type: 'position', missionId: mission.id, point: mission.target, accuracy: 8, observedAt: state.now });
+  command(state, complete); command(state, complete);
+  assert.equal(state.points, state.policy.reward);
+  assert.equal(state.scooters.find((s) => s.id === 'PM-001').zoneId, null);
+  assert.equal(snapshot(state).zones.find((z) => z.id === 'z1').parked, 7);
+  assert.equal(snapshot(state).offers.some((o) => o.id === 'PM-001'), false);
 });
