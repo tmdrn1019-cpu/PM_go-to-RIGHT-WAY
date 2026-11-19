@@ -1,0 +1,56 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { once } from 'node:events';
+import { createStore } from '../server/store.mjs';
+import { createApp } from '../server/app.mjs';
+
+async function setup(t) {
+  const dir = mkdtempSync(join(tmpdir(), 'pm-test-'));
+  const file = join(dir, 'demo.sqlite');
+  const store = createStore(file);
+  const app = createApp({ store });
+  const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+  t.after(async () => { await new Promise((resolve) => server.close(resolve)); store.close(); rmSync(dir, { recursive: true, force: true }); });
+  const post = (action, headers = {}) => fetch(`${base}/api/command`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-PM-Demo': '1', ...headers }, body: JSON.stringify(action) });
+  return { store, file, base, post };
+}
+
+test('API는 정원 1개에 대한 동시 수락 중 하나만 확정한다', async (t) => {
+  const { post, store } = await setup(t);
+  store.transact((state) => { state.zones.find((z) => z.id === 'z2').layouts = [{ capacity: 1, effectiveWidthM: 3 }]; state.scooters = state.scooters.filter((s) => s.zoneId !== 'z2'); });
+  const replies = await Promise.all(['PM-001', 'PM-002'].map((scooterId) => post({ type: 'accept', scooterId, destinationId: 'z2' })));
+  assert.deepEqual(replies.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(store.read().missions.length, 1);
+});
+
+test('데이터베이스 재연결 후 시각과 포인트를 보존한다', async (t) => {
+  const { post, file } = await setup(t);
+  assert.equal((await post({ type: 'advance', minutes: 15 })).status, 200);
+  const reopened = createStore(file);
+  assert.equal(reopened.read().now, '2026-11-19T08:45:00.000Z');
+  assert.equal(reopened.read().points, 0);
+  reopened.close();
+});
+
+test('잘못된 입력은 JSON 오류로 응답하고 실패한 변경은 롤백한다', async (t) => {
+  const { post, store, base } = await setup(t);
+  assert.equal((await post({ type: 'advance', minutes: '15' })).status, 400);
+  assert.equal((await post({ type: 'accept', scooterId: 'PM-001', destinationId: 'z2', failUnlock: true })).status, 502);
+  assert.equal(store.read().missions.length, 0);
+  const broken = await fetch(`${base}/api/command`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-PM-Demo': '1' }, body: '{' });
+  assert.equal(broken.status, 400);
+  assert.ok((await broken.json()).error);
+});
+
+test('외부 Origin 및 전용 헤더 없는 변경 요청을 거절한다', async (t) => {
+  const { post, base } = await setup(t);
+  assert.equal((await post({ type: 'advance', minutes: 1 }, { Origin: 'https://example.com' })).status, 403);
+  assert.equal((await fetch(`${base}/api/command`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 403);
+  const response = await fetch(`${base}/api/state`);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).mode, 'demo');
+});
