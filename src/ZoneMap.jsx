@@ -9,7 +9,7 @@ import { visibleMapCenterY } from './zone-search.mjs';
 const names = { open: '개방', reduced: '축소 운영', closed: '폐쇄', unknown: '확인 중' };
 const pilotCenter = [37.4827, 126.941];
 
-export default function ZoneMap({ zones, selectedId, onSelect, onBoundsChange, focus, position, bottomFraction = 0 }) {
+export default function ZoneMap({ zones, vehicles = [], selectedId, onSelect, onBoundsChange, focus, position, bottomFraction = 0 }) {
   const element = useRef(null); const map = useRef(null); const layer = useRef(null);
   const [tileError, setTileError] = useState(false);
   useEffect(() => {
@@ -40,11 +40,16 @@ export default function ZoneMap({ zones, selectedId, onSelect, onBoundsChange, f
         overlay.bindTooltip(label); overlay.on('click', () => onSelect(zone.id));
       }
     }
+    for (const vehicle of vehicles) {
+      const marker = L.circleMarker(vehicle.point, { radius: 5, color: color('--color-accent'), fillOpacity: 0.8 }).addTo(layer.current);
+      const label = document.createElement('strong'); label.textContent = `${vehicle.cityName} · ${vehicle.provider} ${vehicle.id} · 배터리 ${vehicle.battery}% · 원관측 시각 미제공`;
+      marker.bindTooltip(label);
+    }
     if (position) {
       L.circle(position.point, { radius: Math.min(position.accuracy, 5000), color: color('--color-accent'), weight: 1, fillOpacity: 0.07, interactive: false }).addTo(layer.current);
       L.circleMarker(position.point, { radius: 7, color: color('--color-accent'), fillOpacity: 1, interactive: false }).addTo(layer.current);
     }
-  }, [zones, selectedId, onSelect, position]);
+  }, [zones, vehicles, selectedId, onSelect, position]);
   useEffect(() => {
     const zone = zones.find((value) => value.id === selectedId);
     if (zone && map.current) {

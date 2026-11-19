@@ -3,6 +3,7 @@ const datasets = {
   pedestrians: { service: 'sDoTPeople', ttl: 600_000, sourceUrl: 'https://data.seoul.go.kr/dataList/OA-22832/S/1/datasetView.do', name: '서울시 S-DoT 유동인구 측정 정보' },
 };
 const districts = { Jongno: '종로구', Jung: '중구', Yongsan: '용산구', Seongdong: '성동구', Gwangjin: '광진구', Dongdaemun: '동대문구', Jungnang: '중랑구', Seongbuk: '성북구', Gangbuk: '강북구', Dobong: '도봉구', Nowon: '노원구', Eunpyeong: '은평구', Seodaemun: '서대문구', Mapo: '마포구', Yangcheon: '양천구', Gangseo: '강서구', Guro: '구로구', Geumcheon: '금천구', Yeongdeungpo: '영등포구', Dongjak: '동작구', Gwanak: '관악구', Seocho: '서초구', Gangnam: '강남구', Songpa: '송파구', Gangdong: '강동구' };
+export { districts };
 const check = (valid) => { if (!valid) throw new TypeError('공공데이터 형식을 확인하세요.'); };
 function text(value, max = 200, optional = false) {
   check(typeof value === 'string' && value.length <= max && (optional || value.trim().length));
@@ -40,7 +41,7 @@ export function normalizePedestrians(rows) {
   return [...latest.values()].sort((a, b) => b.observedAt.localeCompare(a.observedAt) || a.id.localeCompare(b.id));
 }
 
-async function boundedJson(response) {
+export async function boundedJson(response) {
   if (!response.ok || !response.body || Number(response.headers.get('content-length') ?? 0) > 2 * 1024 * 1024) {
     await response.body?.cancel().catch(() => {});
     check(false);

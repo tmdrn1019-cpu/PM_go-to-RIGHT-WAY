@@ -10,6 +10,7 @@ async function fetchJSON(path, signal) {
     return await response.json();
   } finally { clearTimeout(timeout); signal?.removeEventListener('abort', cancel); }
 }
+export { fetchJSON as fetchExternalData };
 
 export async function fetchServiceState(signal) {
   const data = await fetchJSON('/api/service/state', signal);

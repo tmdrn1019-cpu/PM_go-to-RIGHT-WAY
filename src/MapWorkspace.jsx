@@ -17,6 +17,7 @@ import { filterZones } from './zone-search.mjs';
 import { distanceM } from '../server/engine.mjs';
 import ZoneMap from './ZoneMap';
 import PublicDataPanel from './PublicDataPanel';
+import ExternalDataPanel from './ExternalDataPanel';
 
 const statuses = { open: '개방', reduced: '축소 운영', closed: '폐쇄', unknown: '확인 중' };
 const colors = { open: 'var(--color-text-success)', reduced: 'var(--color-text-warning)', closed: 'var(--color-text-error)', unknown: 'var(--color-text-secondary)' };
@@ -62,6 +63,8 @@ export default function MapWorkspace({ citizen = false }) {
   const [focus, setFocus] = useState(null); const [position, setPosition] = useState(null);
   const [locationStatus, setLocationStatus] = useState(''); const [locating, setLocating] = useState(false);
   const [locationConsent, setLocationConsent] = useState(false);
+  const [vehicles, setVehicles] = useState([]);
+  const receiveVehicles = useCallback((next, move = false) => { setVehicles(next); if (move) setFocus({ points: next.map(row => row.point) }); }, []);
   const bottomFraction = mobile ? expanded ? 0.55 : 0.35 : 0;
   const online = connection === 'online';
   const zones = (data?.zones ?? []).map((zone) => online ? zone : { ...zone, status: 'unknown', capacity: 0, available: 0, reason: '최신 운영 상태를 다시 확인하고 있습니다.' });
@@ -70,7 +73,7 @@ export default function MapWorkspace({ citizen = false }) {
   const selected = zones.find((zone) => zone.id === selectedId);
   const onBoundsChange = useCallback((next) => setBounds(next), []);
   const select = useCallback((id) => { setSelectedId(id); setFocus(null); setView('zones'); setExpanded(true); }, []);
-  const switchView = (next) => { setView(next); setSelectedId(null); setExpanded(true); };
+  const switchView = (next) => { if (view === 'fleet') setFocus({ points: [] }); setView(next); setSelectedId(null); setExpanded(true); };
   const showAll = () => { setQuery(''); setVehicleType('all'); setLayers(Object.keys(statuses)); setBoundsOnly(false); setSelectedId(null); setFocus({ points: zones.map((zone) => zone.point) }); };
   const locate = () => {
     if (!navigator.geolocation) { setLocationStatus('이 브라우저에서는 위치를 확인할 수 없습니다. 지도를 직접 이동해 주세요.'); return; }
@@ -81,10 +84,10 @@ export default function MapWorkspace({ citizen = false }) {
     }, (error) => { setLocating(false); setLocationStatus(error.code === 1 ? '위치 권한을 허용하지 않았습니다. 지도를 직접 이동하거나 주차존 이름으로 검색할 수 있습니다.' : '위치를 확인하지 못했습니다. 지도를 직접 이동해 주세요.'); }, { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 });
   };
   const dataLabel = connection === 'loading' ? '정보 확인 중' : connection === 'stale' ? '상태 재확인 중' : !online ? '연결 끊김' : data?.status === 'ready' ? '15초 자동 갱신' : data?.status === 'error' ? '자료 확인 중' : '운영 데이터 연결 준비';
-  const panelTitle = { zones: '주차존 찾기', missions: '이동 미션', public: '공공데이터', status: '운영 상태', help: '이용 안내' }[view];
-  const nav = <HStack gap={1} wrap="wrap">{[['zones', '주차존'], ['missions', '이동 미션'], ['public', '공공데이터'], ['status', '운영 상태'], ['help', '이용 안내']].map(([id, label]) => <Button key={id} label={label} size="sm" variant={view === id ? 'primary' : 'ghost'} aria-pressed={view === id} onClick={() => switchView(id)} />)}</HStack>;
+  const panelTitle = { zones: '주차존 찾기', missions: '이동 미션', public: '공공데이터', towing: '견인 분석', fleet: 'PM 위치', status: '운영 상태', help: '이용 안내' }[view];
+  const nav = <HStack gap={1} wrap="wrap">{[['zones', '주차존'], ['towing', '견인 분석'], ['fleet', 'PM 위치'], ['missions', '이동 미션'], ['public', '공공데이터'], ['status', '운영 상태'], ['help', '이용 안내']].map(([id, label]) => <Button key={id} label={label} size="sm" variant={view === id ? 'primary' : 'ghost'} aria-pressed={view === id} onClick={() => switchView(id)} />)}</HStack>;
   const filters = <VStack gap={3}><TextInput label="주차존 이름·주소 검색" value={query} onChange={(value) => { setQuery(value); setSelectedId(null); }} hasClear placeholder="주차존 이름 또는 주소" /><Selector label="기기 종류" value={vehicleType} onChange={(value) => { setVehicleType(value); setSelectedId(null); }} options={[{ value: 'all', label: '전체 기기' }, { value: 'scooter', label: '킥보드' }, { value: 'ebike', label: '전기자전거' }]} /></VStack>;
-  const body = selected ? <ZoneDetails zone={selected} back={() => setSelectedId(null)} openMissions={() => switchView('missions')} /> : view === 'missions' ? <MissionInfo /> : view === 'public' ? <PublicDataPanel /> : view === 'status' ? <VStack gap={5}>
+  const body = selected ? <ZoneDetails zone={selected} back={() => setSelectedId(null)} openMissions={() => switchView('missions')} /> : ['towing','fleet'].includes(view) ? <ExternalDataPanel key={view} kind={view} onVehicles={receiveVehicles} /> : view === 'missions' ? <MissionInfo /> : view === 'public' ? <PublicDataPanel /> : view === 'status' ? <VStack gap={5}>
     <Heading level={2}>지금의 운영 정보</Heading><Text type="large">{dataLabel}</Text><Text>확인 시각 {formatTime(data?.generatedAt)} KST</Text><Text>원자료 갱신 {formatTime(data?.sourceUpdatedAt)} KST</Text><Text>자료 출처 {data?.sourceName ?? '아직 연결되지 않았습니다.'}</Text><Divider /><Text>등록된 주차존 {zones.length}곳 · 개방 {zones.filter((z) => z.status === 'open').length}곳 · 축소 {zones.filter((z) => z.status === 'reduced').length}곳</Text><Text color="secondary">보행량과 주차 현황의 관측 시각을 함께 확인합니다. 자료가 만료되면 반납 가능 여부를 다시 확인할 때까지 안내를 보류합니다.</Text><Button label="운영 정보 새로고침" onClick={refresh} /><Text type="supporting">기기 이동과 보상은 운영사 및 이용자 인증 연결 후 이용할 수 있습니다.</Text>
   </VStack> : view === 'help' ? <VStack gap={5}>
     <Heading level={2}>지도를 이용하는 방법</Heading><Text type="large">주차존의 상태와 이용 가능한 기기를 먼저 확인해 주세요.</Text><VStack gap={3}>{Object.entries(statuses).map(([key, label]) => <HStack key={key} gap={3}><Text type="label" style={{ color: colors[key] }}>{label}</Text><Text>{({ open: '현재 운영 중인 주차존', reduced: '수용량을 줄여 운영하는 주차존', closed: '신규 반납을 받지 않는 주차존', unknown: '최신 정보를 확인 중인 주차존' })[key]}</Text></HStack>)}</VStack><Divider /><Text>내 위치는 주변 탐색을 위해 브라우저에서 사용합니다. 정확한 GPS 좌표를 이 서비스 서버에 전송하지는 않습니다. 다만 내 위치 주변 지도를 열면 OpenStreetMap에 해당 지역의 지도 타일 요청이 전달됩니다.</Text><Text>실제 등록된 주차존만 안내하며, 빈 보도가 주차 허용 공간을 의미하지는 않습니다.</Text><Link href="/">상품 소개 보기</Link>
@@ -97,9 +100,9 @@ export default function MapWorkspace({ citizen = false }) {
     <HStack height="100%" gap={0} style={{ minHeight: 0, position: 'relative', overflow: 'hidden' }}>
       {!mobile && <VStack as="aside" width="24rem" height="100%" gap={0} style={{ flexShrink: 0, borderInlineEnd: 'var(--border-width) solid var(--color-border)', background: 'var(--color-background-surface)' }} aria-label="주차존 탐색 패널"><VStack padding={5} gap={4}><Heading level={3} accessibilityLevel={1}>{panelTitle}</Heading>{nav}<Divider /></VStack><VStack key={selected?.id ?? view} padding={5} gap={4} isScrollable style={{ flex: 1, minHeight: 0 }}>{body}</VStack></VStack>}
       <VStack height="100%" style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
-        <ZoneMap zones={mapZones} selectedId={selectedId} onSelect={select} onBoundsChange={onBoundsChange} focus={focus} position={position} bottomFraction={bottomFraction} />
+        <ZoneMap zones={mapZones} vehicles={vehicles} selectedId={selectedId} onSelect={select} onBoundsChange={onBoundsChange} focus={focus} position={position} bottomFraction={bottomFraction} />
         <VStack gap={2} style={{ position: 'absolute', top: 'var(--spacing-4)', left: 'var(--spacing-4)', zIndex: 2, maxWidth: mobile ? 'calc(100% - 5rem)' : '24rem' }}>
-          <VStack padding={3} gap={1} style={surface}><Text type="label">{dataLabel}</Text><Text type="supporting">{data?.generatedAt ? `${formatTime(data.generatedAt)} KST 확인` : '현재 운영 정보를 확인하고 있습니다'}</Text></VStack>
+          <VStack padding={3} gap={1} style={surface}><Text type="label">{view === 'fleet' ? 'PM 위치 · TAGO' : view === 'towing' ? '견인 이력 · 주소별 분석' : dataLabel}</Text>{!['fleet','towing'].includes(view) && <Text type="supporting">{data?.generatedAt ? `${formatTime(data.generatedAt)} KST 확인` : '현재 운영 정보를 확인하고 있습니다'}</Text>}</VStack>
           {!(mobile && selected) && <HStack gap={2} wrap="wrap"><Button label={locating ? '위치 확인 중' : '내 위치'} isLoading={locating} onClick={() => setLocationConsent(true)} elevation="low" /><Button label="전체 존" onClick={() => setFocus({ points: zones.map((zone) => zone.point) })} elevation="low" /></HStack>}
           {locationStatus && <VStack padding={3} style={surface}><Text role="status">{locationStatus}</Text><Button label="위치 안내 닫기" size="sm" variant="ghost" onClick={() => setLocationStatus('')} /></VStack>}
         </VStack>
