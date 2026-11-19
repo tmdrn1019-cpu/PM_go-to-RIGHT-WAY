@@ -17,7 +17,7 @@ export function aggregateTowing(rows) {
   check(typeof row.NO==='string' && row.NO.length>0 && !ids.has(row.NO));ids.add(row.NO);
   check(knownDistricts.has(row.GU_NM));
   if(row.GU_NM!=='관악구')continue;districtRows++;
-  if(!day(row.ACTN_DAY)||!day(row.DCLR_DT)||typeof row.ADDR!=='string'||!row.ADDR.trim()||row.ADDR.length>300||typeof row.TYPE!=='string'||!row.TYPE.trim()){excludedRows++;continue;}
+  if(!day(row.ACTN_DAY)||!day(row.DCLR_DT)||typeof row.ADDR!=='string'||!row.ADDR.trim()||row.ADDR.length>300||typeof row.TYPE!=='string'||!row.TYPE.trim()||row.TYPE.trim()==='오신고'){excludedRows++;continue;}
   const address=row.ADDR.trim().replace(/\s+/g,' ');
   const group=groups.get(address)??{id:createHash('sha256').update(address).digest('hex').slice(0,20),address,district:'관악구',count:0,firstDate:row.ACTN_DAY,lastDate:row.ACTN_DAY,types:Object.create(null)};
   group.count++;group.firstDate=[group.firstDate,row.ACTN_DAY].sort()[0];group.lastDate=[group.lastDate,row.ACTN_DAY].sort().at(-1);

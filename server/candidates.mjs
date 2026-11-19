@@ -23,6 +23,7 @@ export function selectCandidates(towing, pedestrians, locations, { radiusM = 500
   const base = { radiusM, towingStatus: towing.status, pedestrianStatus: pedestrians?.status ?? 'unconfigured', sensorLocationStatus: locations.status, from: towing.from ?? null, to: towing.to ?? null, candidates: [] };
   if (towing.status !== 'ready') return base;
   const open = towing.areas.filter((a) => a.geocodeStatus === 'matched').sort((a, b) => b.count - a.count || a.id.localeCompare(b.id));
+  base.unmappedTowingCount = towing.areas.reduce((sum, a) => sum + (a.geocodeStatus === 'matched' ? 0 : a.count), 0);
   const records = pedestrians?.status === 'ready' ? pedestrians.records : [];
   const positions = new Map(locations.sensors.map((s) => [s.id, s.point]));
   const districtSensors = records.filter((r) => r.district === '관악구').length;

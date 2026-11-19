@@ -15,8 +15,8 @@ test('견인 저장 파일의 추가 비밀 필드와 잘못된 집계는 공개
  }finally{if(existsSync(file))unlinkSync(file);rmdirSync(dir);}
 });
 test('견인 분석구역은 관악구의 실제 조치일 있는 이력만 주소별로 집계하고 법적 경계를 만들지 않는다',()=>{
- const result=aggregateTowing([row,{...row,NO:'2'},{...row,NO:'3',ACTN_DAY:''},{...row,NO:'4',GU_NM:'종로구'}]);
- assert.equal(result.areas.length,1);assert.equal(result.areas[0].count,2);assert.equal(result.excludedRows,1);
+ const result=aggregateTowing([row,{...row,NO:'2'},{...row,NO:'3',ACTN_DAY:''},{...row,NO:'4',GU_NM:'종로구'},{...row,NO:'5',TYPE:'오신고'}]);
+ assert.equal(result.areas.length,1);assert.equal(result.areas[0].count,2);assert.equal(result.excludedRows,2);
  assert.equal('boundary' in result.areas[0],false);assert.equal('point' in result.areas[0],false);
  assert.throws(()=>aggregateTowing([row,row]));
 });

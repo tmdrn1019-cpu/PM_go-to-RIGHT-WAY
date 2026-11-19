@@ -14,6 +14,7 @@ const pedestrians = { status: 'ready', records: [{ id: 'S1', district: '관악�
 test('candidates group geocoded hotspots by radius, rank by towing and never auto-open', () => {
   const result = selectCandidates(towing, pedestrians, { status: 'unconfigured', sensors: [] });
   assert.deepEqual(result.candidates.map((c) => [c.id, c.towingCount, c.addressCount]), [['b', 40, 2], ['c', 5, 1]]);
+  assert.equal(result.unmappedTowingCount, 99);
   assert.equal(result.candidates[0].pedestrian.status, 'location-unknown');
   assert.equal(result.candidates[0].pedestrian.districtSensors, 1);
   assert.ok(result.candidates.every((c) => c.evaluation.status === 'unknown'));

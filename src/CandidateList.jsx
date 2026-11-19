@@ -14,14 +14,17 @@ export default function CandidateList({ onTowing }) {
   const [data, setData] = useState(null); const [failed, setFailed] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
-    fetchExternalData('/api/towing/candidates', controller.signal).then((next) => { if (!Array.isArray(next.candidates)) throw new Error('invalid'); setData(next); }).catch(() => { if (!controller.signal.aborted) setFailed(true); });
-    return () => controller.abort();
+    // Re-read every minute so pedestrian delay flags never go stale; drop old data on failure.
+    const read = () => { if (document.hidden) return; fetchExternalData('/api/towing/candidates', controller.signal).then((next) => { if (!Array.isArray(next.candidates)) throw new Error('invalid'); setData(next); setFailed(false); }).catch(() => { if (!controller.signal.aborted) { setData(null); setFailed(true); } }); };
+    read(); const timer = setInterval(read, 60000); document.addEventListener('visibilitychange', read);
+    return () => { controller.abort(); clearInterval(timer); document.removeEventListener('visibilitychange', read); };
   }, []);
   if (failed) return <Text>후보 탐색지 자료를 확인할 수 없습니다.</Text>;
   if (!data) return <Text type="supporting">후보 탐색지 계산 중</Text>;
   return <VStack gap={2}>
     <Heading level={3}>주차존 후보 탐색지 {data.candidates.length}곳</Heading>
     <Text type="supporting">견인 다발 주소 반경 {data.radiusM}m를 묶은 탐색 영역입니다. 제휴 공간·보도 유효폭·15분 보행량을 확인하기 전에는 판정 불가이며 개방하지 않습니다.</Text>
+    {!!data.unmappedTowingCount && <Text type="supporting">좌표를 확인하지 못한 주소의 견인 {data.unmappedTowingCount}건은 후보 합계에서 빠졌습니다.</Text>}
     {data.candidates.map((c, i) => <VStack key={c.id} gap={1} paddingBlock={2} style={{ borderBottom: 'var(--border-width) solid var(--color-border)' }}>
       <Text type="label">{i + 1}. {c.address} 주변</Text>
       <Text>견인 {c.towingCount.toLocaleString('ko-KR')}건 · 주소 {c.addressCount}곳 · 판정 불가</Text>
