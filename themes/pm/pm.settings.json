@@ -1,0 +1,54 @@
+{
+  "name": "pm",
+  "like": "neutral",
+  "mode": "both",
+  "settings": [
+    {
+      "thing": "neutral",
+      "value": "#1E3B34",
+      "source": "dial"
+    },
+    {
+      "thing": "accent",
+      "value": "#1E3B34",
+      "source": "dial"
+    },
+    {
+      "thing": "--color-background-body",
+      "value": "#F3ECE0",
+      "source": "token"
+    },
+    {
+      "thing": "--color-background-surface",
+      "value": "#FBF7F0",
+      "source": "token"
+    },
+    {
+      "thing": "--color-background-card",
+      "value": "#FBF7F0",
+      "source": "token"
+    },
+    {
+      "thing": "--color-text-primary",
+      "value": "#1E3B34",
+      "source": "token"
+    },
+    {
+      "thing": "--color-on-accent",
+      "value": "#FBF7F0",
+      "source": "token"
+    },
+    {
+      "thing": "--color-text-accent",
+      "value": "#FF4A1A",
+      "source": "token"
+    },
+    {
+      "thing": "--color-icon-accent",
+      "value": "#FF4A1A",
+      "source": "token"
+    }
+  ],
+  "lifted": [],
+  "palette": "6cf8a3dd984da80ba25ea088e63e525f69a318d6169c22e0a17be939ba0d2106"
+}

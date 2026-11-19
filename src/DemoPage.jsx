@@ -22,6 +22,7 @@ export default function DemoPage() {
   const mobile = useMediaQuery('(max-width: 56rem)');
   const [state, setState] = useState(null); const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false);
   const [destinations, setDestinations] = useState({}); const [failUnlock, setFailUnlock] = useState(false); const [focus, setFocus] = useState(null);
+  const [tab, setTab] = useState('mission');
   const load = useCallback(() => fetch('/api/demo/state', { cache: 'no-store' }).then((r) => r.ok ? r.json() : r.json().then((d) => Promise.reject(new Error(d.error)))).then(setState).catch((e) => setMessage(e.message || '시연 상태를 불러오지 못했습니다.')), []);
   useEffect(() => { load(); }, [load]);
   const send = async (action, done) => {
@@ -47,7 +48,7 @@ export default function DemoPage() {
   const onSelect = useCallback(() => {}, []);
 
   const panel = !state ? <Text role="status">{message || '시연 상태를 불러오고 있습니다.'}</Text> : <VStack gap={5}>
-    <Section variant="muted"><VStack gap={2}><Text type="label">시연 모드 · 합성 자료</Text><Text>가상의 존·기기·시계로 이동 미션 흐름을 보여 줍니다. 잠금 해제, GPS, 사진 판정, 경보, 포인트는 모두 모의 동작이며 실제 기기나 계정에는 아무 영향이 없습니다.</Text></VStack></Section>
+    <Section variant="muted"><Text>시연 모드 · 합성 자료입니다. 잠금 해제·GPS·사진 판정·포인트는 모두 모의 동작입니다.</Text></Section>
     {message && <Text aria-live="assertive" weight="bold">{message}</Text>}
     <HStack gap={6} wrap="wrap">
       <VStack gap={1}><Text color="secondary">시연 시각</Text><Text type="large" weight="bold">{time(state.now)}</Text></VStack>
@@ -59,9 +60,10 @@ export default function DemoPage() {
       <Button label="1시간 진행" size="sm" variant="secondary" isDisabled={busy} onClick={() => send({ type: 'advance', minutes: 60 }, '시연 시계를 1시간 진행했습니다.')} />
       <Button label="시연 초기화" size="sm" variant="ghost" isDisabled={busy} onClick={() => { if (window.confirm('시연 상태(미션·포인트·기록)를 처음으로 되돌릴까요?')) send({ type: 'reset', confirm: true }, '시연을 초기화했습니다.'); }} />
     </HStack>
+    <HStack gap={2} wrap="wrap">{[['mission', '미션'], ['zones', '존 상태'], ['log', '기록']].map(([id, label]) => <Button key={id} label={label} size="sm" variant={tab === id ? 'primary' : 'ghost'} aria-pressed={tab === id} onClick={() => setTab(id)} />)}</HStack>
     <Divider />
 
-    {active ? <VStack gap={3}>
+    {tab === 'mission' && (active ? <VStack gap={3}>
       <Heading level={2}>진행 중인 미션</Heading>
       <Text>{active.scooterId} · {zoneName(active.originId)} → {active.destinationId === 'exit' ? '견인 구역 밖' : zoneName(active.destinationId)}</Text>
       <Text type="supporting">{missionStatus[active.status]} · {time(active.expiresAt)}까지 도착 · 걸어서 끌고 이동{active.alarmed ? ' · 경보 발생' : ''}</Text>
@@ -82,7 +84,7 @@ export default function DemoPage() {
       <Button label="미션 취소 (운영사 인계)" size="sm" variant="ghost" isDisabled={busy} onClick={() => send({ type: 'cancel', missionId: active.id }, '미션을 취소하고 운영사 인계로 남겼습니다.')} />
     </VStack> : <VStack gap={3}>
       <Heading level={2}>이동이 필요한 기기 {state.offers.length}대</Heading>
-      <Text type="supporting">폐쇄·축소로 정원을 넘긴 존에서 정상 반납된 기기만 대상입니다. 최근 {state.policy.recentMoveMinutes}분 안에 옮긴 기기는 빠집니다. 견인 구역 안 기기는 구역 경계 바로 밖(가장 짧은 거리)이 먼저 선택되고, 걸어서 {state.policy.maxMoveM ?? 300}m 안의 열린 존도 고를 수 있습니다.</Text>
+      <Text type="supporting">정원을 넘긴 존의 정상 반납 기기만 대상이며, 최근 {state.policy.recentMoveMinutes}분 안에 옮긴 기기는 빠집니다.</Text>
       <CheckboxInput label="잠금 해제 실패 상황 시연" value={failUnlock} onChange={setFailUnlock} />
       <VStack gap={0}>{state.offers.map((offer) => {
         const chosen = destinations[offer.id] ?? offer.destinations[0]?.id ?? '';
@@ -95,20 +97,16 @@ export default function DemoPage() {
         </VStack>;
       })}</VStack>
       {!state.offers.length && <Text type="supporting">지금은 옮길 기기가 없습니다. 시계를 진행해 존이 닫히는 시간대를 만들어 보세요.</Text>}
-    </VStack>}
-    <Divider />
+    </VStack>)}
 
-    <Heading level={2}>존 상태</Heading>
-    <VStack gap={0}>{state.zones.map((z) => <VStack key={z.id} gap={1} paddingBlock={2} style={{ borderBottom: 'var(--border-width) solid var(--color-border)' }}>
+    {tab === 'zones' && <><VStack gap={0}>{state.zones.map((z) => <VStack key={z.id} gap={1} paddingBlock={2} style={{ borderBottom: 'var(--border-width) solid var(--color-border)' }}>
       <HStack hAlign="between" gap={2}><Text type="label">{z.name}</Text><Text type="label">{statuses[z.status]}</Text></HStack>
       <Text type="supporting">정원 {z.capacity} · 주차 {z.parked} · 예약 {z.reserved} · 여유 {z.available}{z.overflow ? ` · 초과 ${z.overflow}` : ''}{z.los ? ` · LOS ${z.los}` : ''}</Text>
       <Text type="supporting">{z.reason}</Text>
     </VStack>)}</VStack>
-    <Text type="supporting">운영사 인계 대기 {state.operatorHandoffs}대</Text>
-    <Divider />
+    <Text type="supporting">운영사 인계 대기 {state.operatorHandoffs}대</Text></>}
 
-    <Heading level={2}>기록</Heading>
-    <VStack gap={1}>{state.events.slice(0, 15).map((e) => <Text key={e.id} type="supporting">{time(e.at)} · {e.message}</Text>)}{!state.events.length && <Text type="supporting">아직 기록이 없습니다.</Text>}</VStack>
+    {tab === 'log' && <VStack gap={1}>{state.events.slice(0, 15).map((e) => <Text key={e.id} type="supporting">{time(e.at)} · {e.message}</Text>)}{!state.events.length && <Text type="supporting">아직 기록이 없습니다.</Text>}</VStack>}
   </VStack>;
 
   const position = active?.position ? { point: active.position.point, accuracy: active.position.accuracy } : null;
