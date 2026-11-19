@@ -16,6 +16,7 @@ import useServiceData from './useServiceData';
 import { filterZones } from './zone-search.mjs';
 import { distanceM } from '../server/engine.mjs';
 import ZoneMap from './ZoneMap';
+import PublicDataPanel from './PublicDataPanel';
 
 const statuses = { open: '개방', reduced: '축소 운영', closed: '폐쇄', unknown: '확인 중' };
 const colors = { open: 'var(--color-text-success)', reduced: 'var(--color-text-warning)', closed: 'var(--color-text-error)', unknown: 'var(--color-text-secondary)' };
@@ -80,10 +81,10 @@ export default function MapWorkspace({ citizen = false }) {
     }, (error) => { setLocating(false); setLocationStatus(error.code === 1 ? '위치 권한을 허용하지 않았습니다. 지도를 직접 이동하거나 주차존 이름으로 검색할 수 있습니다.' : '위치를 확인하지 못했습니다. 지도를 직접 이동해 주세요.'); }, { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 });
   };
   const dataLabel = connection === 'loading' ? '정보 확인 중' : connection === 'stale' ? '상태 재확인 중' : !online ? '연결 끊김' : data?.status === 'ready' ? '15초 자동 갱신' : data?.status === 'error' ? '자료 확인 중' : '운영 데이터 연결 준비';
-  const panelTitle = { zones: '주차존 찾기', missions: '이동 미션', status: '운영 상태', help: '이용 안내' }[view];
-  const nav = <HStack gap={1} wrap="wrap">{[['zones', '주차존'], ['missions', '이동 미션'], ['status', '운영 상태'], ['help', '이용 안내']].map(([id, label]) => <Button key={id} label={label} size="sm" variant={view === id ? 'primary' : 'ghost'} aria-pressed={view === id} onClick={() => switchView(id)} />)}</HStack>;
+  const panelTitle = { zones: '주차존 찾기', missions: '이동 미션', public: '공공데이터', status: '운영 상태', help: '이용 안내' }[view];
+  const nav = <HStack gap={1} wrap="wrap">{[['zones', '주차존'], ['missions', '이동 미션'], ['public', '공공데이터'], ['status', '운영 상태'], ['help', '이용 안내']].map(([id, label]) => <Button key={id} label={label} size="sm" variant={view === id ? 'primary' : 'ghost'} aria-pressed={view === id} onClick={() => switchView(id)} />)}</HStack>;
   const filters = <VStack gap={3}><TextInput label="주차존 이름·주소 검색" value={query} onChange={(value) => { setQuery(value); setSelectedId(null); }} hasClear placeholder="주차존 이름 또는 주소" /><Selector label="기기 종류" value={vehicleType} onChange={(value) => { setVehicleType(value); setSelectedId(null); }} options={[{ value: 'all', label: '전체 기기' }, { value: 'scooter', label: '킥보드' }, { value: 'ebike', label: '전기자전거' }]} /></VStack>;
-  const body = selected ? <ZoneDetails zone={selected} back={() => setSelectedId(null)} openMissions={() => switchView('missions')} /> : view === 'missions' ? <MissionInfo /> : view === 'status' ? <VStack gap={5}>
+  const body = selected ? <ZoneDetails zone={selected} back={() => setSelectedId(null)} openMissions={() => switchView('missions')} /> : view === 'missions' ? <MissionInfo /> : view === 'public' ? <PublicDataPanel /> : view === 'status' ? <VStack gap={5}>
     <Heading level={2}>지금의 운영 정보</Heading><Text type="large">{dataLabel}</Text><Text>확인 시각 {formatTime(data?.generatedAt)} KST</Text><Text>원자료 갱신 {formatTime(data?.sourceUpdatedAt)} KST</Text><Text>자료 출처 {data?.sourceName ?? '아직 연결되지 않았습니다.'}</Text><Divider /><Text>등록된 주차존 {zones.length}곳 · 개방 {zones.filter((z) => z.status === 'open').length}곳 · 축소 {zones.filter((z) => z.status === 'reduced').length}곳</Text><Text color="secondary">보행량과 주차 현황의 관측 시각을 함께 확인합니다. 자료가 만료되면 반납 가능 여부를 다시 확인할 때까지 안내를 보류합니다.</Text><Button label="운영 정보 새로고침" onClick={refresh} /><Text type="supporting">기기 이동과 보상은 운영사 및 이용자 인증 연결 후 이용할 수 있습니다.</Text>
   </VStack> : view === 'help' ? <VStack gap={5}>
     <Heading level={2}>지도를 이용하는 방법</Heading><Text type="large">주차존의 상태와 이용 가능한 기기를 먼저 확인해 주세요.</Text><VStack gap={3}>{Object.entries(statuses).map(([key, label]) => <HStack key={key} gap={3}><Text type="label" style={{ color: colors[key] }}>{label}</Text><Text>{({ open: '현재 운영 중인 주차존', reduced: '수용량을 줄여 운영하는 주차존', closed: '신규 반납을 받지 않는 주차존', unknown: '최신 정보를 확인 중인 주차존' })[key]}</Text></HStack>)}</VStack><Divider /><Text>내 위치는 주변 탐색을 위해 브라우저에서 사용합니다. 정확한 GPS 좌표를 이 서비스 서버에 전송하지는 않습니다. 다만 내 위치 주변 지도를 열면 OpenStreetMap에 해당 지역의 지도 타일 요청이 전달됩니다.</Text><Text>실제 등록된 주차존만 안내하며, 빈 보도가 주차 허용 공간을 의미하지는 않습니다.</Text><Link href="/">상품 소개 보기</Link>

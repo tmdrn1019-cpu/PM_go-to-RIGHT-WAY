@@ -36,7 +36,9 @@ npm start
 
 ## 운영 데이터 연결
 
-현재는 실제 데이터 수집기·운영사 API가 제공되지 않았습니다. 기본 실행은 원자료를 임의로 생성하지 않습니다. 수집기가 만드는 데이터 파일을 연결할 수 있는 읽기 전용 경계를 구현했습니다.
+서울시 공식 주차구역·S-DoT 조회 연결도 제공합니다. [설정 안내](docs/seoul-data.md)에 따라 `.env.local`의 `SEOUL_OPEN_DATA_KEY`를 설정한 뒤 서버를 재시작하고 지도 화면의 **공공데이터** 탭을 여세요. 키가 없으면 연결 준비 상태이며 실제 자료를 합성하지 않습니다. 이 두 공식 응답에는 좌표·주차 경계가 없어 공공 목록 조회만으로 지도 마커나 반납 가능 상태를 만들지 않습니다.
+
+동적 주차존을 판정할 현장 측정·운영사 자료는 아직 제공되지 않았습니다. 기본 실행은 원자료를 임의로 생성하지 않습니다. 수집기가 만드는 데이터 파일을 연결할 수 있는 읽기 전용 경계를 구현했습니다.
 
 ```powershell
 $env:SERVICE_DATA_FILE = 'C:/pm-private/service-feed.json'
@@ -77,7 +79,8 @@ npx astryx doctor --built dist
 | `src/LandingPage.jsx` | 상품 소개와 서비스 진입 |
 | `src/MapWorkspace.jsx`, `src/ZoneMap.jsx` | 데스크톱·모바일 지도 탐색 |
 | `src/useServiceData.js`, `src/service-client.mjs` | 조회·타임아웃·만료·복귀 처리 |
+| `server/seoul-data.mjs`, `src/PublicDataPanel.jsx` | 서울시 공식 API 수집·캐시와 공공데이터 조회 |
 
 이전 시연의 `server/app.mjs`, `store.mjs`, `simulation.mjs`, `fixtures.mjs`는 회귀 테스트용으로 남아 있습니다. 현재 실행 서버에 마운트되지 않으며 `/api/state`, `/api/command`는 404입니다. 기존 `data/demo.sqlite`는 수정하거나 삭제하지 않았습니다.
 
-실제 공공데이터 자동 수집, 운영사 연동, 시민 계정·이동 자격, 사진 검수, 실제 보상은 후속 연결 범위입니다. 현재 화면과 읽기 전용 조회 경계를 실제 기기 이동 서비스 전체의 완료로 취급하지 마세요.
+서울시 공공 API는 인증키 설정 후 서버에서 수집합니다. 실제 운영용 15분 보행량·현장 경계·유효폭·재고 결합, 운영사 연동, 시민 계정·이동 자격, 사진 검수, 실제 보상은 후속 범위입니다. 현재 화면과 읽기 전용 조회 경계를 실제 기기 이동 서비스 전체의 완료로 취급하지 마세요.
