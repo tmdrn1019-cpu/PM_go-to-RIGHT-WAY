@@ -5,6 +5,7 @@ import { Button } from '@astryxdesign/core/Button';
 import { Link } from '@astryxdesign/core/Link';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { fetchExternalData } from './service-client.mjs';
+import CandidateList from './CandidateList.jsx';
 
 const time=(value)=>value?new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):'—';
 export default function ExternalDataPanel({kind,onVehicles,onTowing}){
@@ -45,6 +46,7 @@ export default function ExternalDataPanel({kind,onVehicles,onTowing}){
    {!!data?.geocoding?.pending&&<Text type="supporting">주소 좌표 변환을 준비 중입니다. 변환된 주소부터 지도에 표시합니다.</Text>}
    {data?.geocoding?.sourceUrl&&<Link href={data.geocoding.sourceUrl} target="_blank" rel="noopener noreferrer">좌표 출처: SGIS</Link>}
    {!!data?.geocoding?.mapped&&<Button label="견인 분석 위치 전체 보기" variant="secondary" isDisabled={connection!=='online'} onClick={()=>onTowing(rows.filter(row=>row.geocodeStatus==='matched'),true)}/>}
+   {data?.status==='ready'&&<CandidateList onTowing={onTowing}/>}
   </>}
   {connection==='offline'&&<Text>마지막 조회 자료이며 최신 상태는 확인할 수 없습니다.</Text>}
   {!!rows.length&&<><TextInput label={fleet?'기기 번호 검색':'견인 주소 검색'} value={query} hasClear onChange={value=>{setQuery(value);setLimit(30);}}/><Text>검색 결과 {filtered.length}건</Text><VStack gap={0}>{filtered.slice(0,limit).map(row=><VStack key={row.id} gap={2} paddingBlock={4} style={{borderBottom:'var(--border-width) solid var(--color-border)'}}>
