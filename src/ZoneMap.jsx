@@ -9,8 +9,9 @@ import { visibleMapCenterY } from './zone-search.mjs';
 const names = { open: '개방', reduced: '축소 운영', closed: '폐쇄', unknown: '확인 중' };
 const pilotCenter = [37.4827, 126.941];
 
-export default function ZoneMap({ zones, selectedId, onSelect, onBoundsChange, focus, position, bottomFraction = 0 }) {
+export default function ZoneMap({ zones, vehicles = [], towingAreas, selectedId, onSelect, onBoundsChange, focus, position, bottomFraction = 0 }) {
   const element = useRef(null); const map = useRef(null); const layer = useRef(null);
+  const towingLayer = useRef(null);
   const [tileError, setTileError] = useState(false);
   useEffect(() => {
     const instance = L.map(element.current, { scrollWheelZoom: true, attributionControl: false, zoomControl: false }).setView(pilotCenter, 15);
@@ -20,6 +21,7 @@ export default function ZoneMap({ zones, selectedId, onSelect, onBoundsChange, f
     const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19 }).addTo(instance);
     tiles.on('tileerror', () => setTileError(true)); tiles.on('tileload', () => setTileError(false));
     layer.current = L.layerGroup().addTo(instance);
+    towingLayer.current = L.layerGroup().addTo(instance);
     const report = () => { const bounds = instance.getBounds(); onBoundsChange([bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast()]); };
     instance.on('moveend', report); report();
     const observer = new ResizeObserver(() => instance.invalidateSize()); observer.observe(element.current);
@@ -40,11 +42,26 @@ export default function ZoneMap({ zones, selectedId, onSelect, onBoundsChange, f
         overlay.bindTooltip(label); overlay.on('click', () => onSelect(zone.id));
       }
     }
+    for (const vehicle of vehicles) {
+      const marker = L.circleMarker(vehicle.point, { radius: 5, color: color('--color-accent'), fillOpacity: 0.8 }).addTo(layer.current);
+      const label = document.createElement('strong'); label.textContent = `${vehicle.cityName} · ${vehicle.provider} ${vehicle.id} · 배터리 ${vehicle.battery}% · 원관측 시각 미제공`;
+      marker.bindTooltip(label);
+    }
     if (position) {
       L.circle(position.point, { radius: Math.min(position.accuracy, 5000), color: color('--color-accent'), weight: 1, fillOpacity: 0.07, interactive: false }).addTo(layer.current);
       L.circleMarker(position.point, { radius: 7, color: color('--color-accent'), fillOpacity: 1, interactive: false }).addTo(layer.current);
     }
-  }, [zones, selectedId, onSelect, position]);
+  }, [zones, vehicles, selectedId, onSelect, position]);
+  useEffect(() => {
+    if (!map.current) return;
+    towingLayer.current.clearLayers();
+    const css = getComputedStyle(element.current); const color = css.getPropertyValue('--color-warning').trim() || css.color;
+    for (const area of towingAreas ?? []) {
+      const marker = L.circleMarker(area.point, { radius: Math.min(24, 6 + Math.sqrt(area.count)), color, weight: 2, fillOpacity: 0.35 }).addTo(towingLayer.current);
+      const label = document.createElement('strong'); label.textContent = `${area.address} · 견인 ${area.count}건 · ${area.firstDate}~${area.lastDate} · SGIS 주소 대표점 (금지 경계 아님)`;
+      marker.bindTooltip(label); marker.bindPopup(label.cloneNode(true));
+    }
+  }, [towingAreas]);
   useEffect(() => {
     const zone = zones.find((value) => value.id === selectedId);
     if (zone && map.current) {
