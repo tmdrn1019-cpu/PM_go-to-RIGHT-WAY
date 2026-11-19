@@ -11,7 +11,7 @@ app.use((_req, res, next) => {
   next();
 });
 app.use(express.static(dist));
-app.get(['/', '/service', '/mobile'], (_req, res) => res.sendFile(resolve(dist, 'index.html')));
+app.get(['/', '/service', '/mobile', '/demo'], (_req, res) => res.sendFile(resolve(dist, 'index.html')));
 app.use((_req, res) => res.status(404).sendFile(resolve(dist, 'index.html')));
 const port = Number(process.env.PORT ?? 3001);
 const server = app.listen(port, '127.0.0.1', () => console.log(`PM 주차존: http://127.0.0.1:${port}`));
