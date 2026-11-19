@@ -29,27 +29,26 @@ const surface = { background: 'var(--color-background-surface)', borderRadius: '
 
 function ZoneStatus({ zone }) { return <Text type="label" style={{ color: colors[zone.status] }}>{statuses[zone.status]}</Text>; }
 
-function ZoneDetails({ zone, back, openMissions }) {
+function ZoneDetails({ zone, openMissions }) {
+  const [more, setMore] = useState(false);
   return <VStack gap={5}>
-    <Button label="주차존 목록으로" variant="ghost" size="sm" onClick={back} />
     <VStack gap={2}><ZoneStatus zone={zone} /><Heading level={2}>{zone.name}</Heading><Text color="secondary">{zone.address}</Text></VStack>
-    <HStack gap={6} wrap="wrap"><VStack gap={1}><Text color="secondary">반납 가능</Text><Text type="large" weight="bold">{zone.available}대</Text></VStack><VStack gap={1}><Text color="secondary">수용 정원</Text><Text type="large" weight="bold">{zone.capacity}대</Text></VStack><VStack gap={1}><Text color="secondary">현재 주차</Text><Text type="large" weight="bold">{zone.parked ?? '—'}대</Text></VStack></HStack>
-    <Text type="large">{zone.reason}</Text><Divider />
-    <VStack gap={3}><Text type="label">이용 가능한 기기</Text><Text>{zone.vehicleTypes.map((type) => types[type]).join(' · ')}</Text><Text type="label">다음 운영 변경 예정</Text><Text>{zone.nextChange ? `${({ open: '개방', reduce: '수용량 조절', close: '폐쇄' })[zone.nextChange.type]} ${formatTime(zone.nextChange.at)} KST` : '다음 변경 시각이 등록되지 않았습니다.'}</Text><Text type="supporting">운영시간표 기준이며 보행 상황에 따라 달라질 수 있습니다.</Text><Text type="label">선택 배치의 보행량과 유효폭</Text><Text>15분 보행량 {zone.pedestrianCount15Min?.toLocaleString('ko-KR') ?? '—'}명 · 유효폭 {zone.effectiveWidthM ?? '—'}m · LOS {zone.los ?? '—'}</Text><Text type="supporting">관측 {formatTime(zone.observedAt)} · {zone.observationSource ?? '자료 확인 중'}<br />재고 확인 {formatTime(zone.inventoryObservedAt)} KST</Text></VStack>
-    <Button label="이동 미션 확인" onClick={openMissions} />
+    <VStack gap={1}><Text color="secondary">지금 반납 가능</Text><Text type="display-3" color="accent">{zone.available}대</Text></VStack>
+    <Text type="large">{zone.reason}</Text>
+    {more ? <VStack gap={3}><Divider />
+      <Text>정원 {zone.capacity}대 · 현재 주차 {zone.parked ?? '—'}대 · {zone.vehicleTypes.map((type) => types[type]).join(' · ')}</Text>
+      <Text>다음 변경 {zone.nextChange ? `${({ open: '개방', reduce: '수용량 조절', close: '폐쇄' })[zone.nextChange.type]} ${formatTime(zone.nextChange.at)} KST` : '등록되지 않음'}</Text>
+      <Text>15분 보행량 {zone.pedestrianCount15Min?.toLocaleString('ko-KR') ?? '—'}명 · 유효폭 {zone.effectiveWidthM ?? '—'}m · LOS {zone.los ?? '—'}</Text>
+      <Text type="supporting">관측 {formatTime(zone.observedAt)} · {zone.observationSource ?? '자료 확인 중'} · 재고 확인 {formatTime(zone.inventoryObservedAt)} KST. 보행 상황에 따라 바뀔 수 있습니다.</Text>
+    </VStack> : <Button label="판정 근거 보기" variant="secondary" onClick={() => setMore(true)} />}
+    <Button label="이동 미션 보기" variant="ghost" onClick={openMissions} />
   </VStack>;
 }
 
 function MissionInfo() {
   return <VStack gap={5}>
-    <Text type="label" color="accent">시민과 함께하는 이동</Text><Heading level={2}>길을 비우는 작은 이동</Heading>
-    <Text type="large">이동이 필요한 킥보드와 전기자전거를 가까운 열린 주차존으로 옮기는 미션입니다.</Text>
-    <Section variant="muted"><VStack gap={3}><Text type="label">참여 가능한 미션을 준비하고 있어요</Text><Text>참여 운영사 연결과 이용자 인증이 준비되면 이곳에서 이동 대상과 조건을 확인할 수 있습니다.</Text></VStack></Section>
-    <VStack as="ol" gap={5} style={{ listStyle: 'decimal', paddingInlineStart: 'var(--spacing-5)' }}>
-      <VStack as="li" gap={1}><Text type="label">기기와 목적지 확인</Text><Text color="secondary">기기 종류, 이동 거리, 참여 조건과 보상을 먼저 확인합니다.</Text></VStack>
-      <VStack as="li" gap={1}><Text type="label">걸어서 끌고 이동</Text><Text color="secondary">운영사의 이동 허용을 확인한 뒤 도보로 이동합니다.</Text></VStack>
-      <VStack as="li" gap={1}><Text type="label">정주차와 완료 확인</Text><Text color="secondary">열린 주차존 안에 세우고 도착 위치와 사진을 확인합니다.</Text></VStack>
-    </VStack><Text type="supporting">미연결 기기의 잠금을 해제하거나 이동 완료로 처리하지 않습니다.</Text>
+    <Text type="large">이동이 필요한 기기를 걸어서 끌고 가까운 열린 주차존으로 옮기는 미션입니다.</Text>
+    <Section variant="muted"><Text>참여 운영사 연결과 이용자 인증이 준비되면 이곳에서 미션에 참여할 수 있습니다.</Text></Section>
   </VStack>;
 }
 
@@ -64,6 +63,7 @@ export default function MapWorkspace({ citizen = false }) {
   const [focus, setFocus] = useState(null); const [position, setPosition] = useState(null);
   const [locationStatus, setLocationStatus] = useState(''); const [locating, setLocating] = useState(false);
   const [locationConsent, setLocationConsent] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [vehicles, setVehicles] = useState([]);
   const [towingAreas, setTowingAreas] = useState([]);
   const receiveTowing = useCallback((next, move = false) => { setTowingAreas(next); if (move) setFocus({ points: next.map(row => row.point) }); }, []);
@@ -87,32 +87,34 @@ export default function MapWorkspace({ citizen = false }) {
     }, (error) => { setLocating(false); setLocationStatus(error.code === 1 ? '위치 권한을 허용하지 않았습니다. 지도를 직접 이동하거나 주차존 이름으로 검색할 수 있습니다.' : '위치를 확인하지 못했습니다. 지도를 직접 이동해 주세요.'); }, { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 });
   };
   const dataLabel = connection === 'loading' ? '정보 확인 중' : connection === 'stale' ? '상태 재확인 중' : !online ? '연결 끊김' : data?.status === 'ready' ? '15초 자동 갱신' : data?.status === 'error' ? '자료 확인 중' : '운영 데이터 연결 준비';
-  const panelTitle = { zones: '주차존 찾기', missions: '이동 미션', public: '공공데이터', towing: '견인 분석', fleet: 'PM 위치', status: '운영 상태', help: '이용 안내', admin: '존 등록' }[view];
-  const nav = <HStack gap={1} wrap="wrap">{[['zones', '주차존'], ['towing', '견인 분석'], ['fleet', 'PM 위치'], ['missions', '이동 미션'], ['public', '공공데이터'], ['status', '운영 상태'], ['help', '이용 안내'], ...(mobile ? [] : [['admin', '존 등록']])].map(([id, label]) => <Button key={id} label={label} size="sm" variant={view === id ? 'primary' : 'ghost'} aria-pressed={view === id} onClick={() => switchView(id)} />)}</HStack>;
+  const menu = [['missions', '이동 미션', '기기를 열린 존으로 옮기기'], ['help', '이용 안내', '상태 표시와 위치 정보 사용'], ['status', '운영 상태', '자료 갱신 시각과 새로고침'], ...(citizen ? [] : [['towing', '견인 분석', '견인 다발 주소와 후보지'], ['fleet', 'PM 위치', '공식 기기 위치 조회'], ['public', '공공데이터', '공식 주차구역·보행 관측'], ...(mobile ? [] : [['admin', '존 등록', '운영자 전용']])])];
+  const panelTitle = selected ? selected.name : view === 'zones' ? '주차존 찾기' : view === 'menu' ? '메뉴' : menu.find(([id]) => id === view)?.[1];
+  const nav = <HStack gap={2}>{(view !== 'zones' || selected) && <Button label="주차존으로" size="sm" variant="ghost" onClick={() => switchView('zones')} />}{view !== 'menu' && <Button label="메뉴" size="sm" variant="secondary" onClick={() => switchView('menu')} />}</HStack>;
   const filters = <VStack gap={3}><TextInput label="주차존 이름·주소 검색" value={query} onChange={(value) => { setQuery(value); setSelectedId(null); }} hasClear placeholder="주차존 이름 또는 주소" /><Selector label="기기 종류" value={vehicleType} onChange={(value) => { setVehicleType(value); setSelectedId(null); }} options={[{ value: 'all', label: '전체 기기' }, { value: 'scooter', label: '킥보드' }, { value: 'ebike', label: '전기자전거' }]} /></VStack>;
-  const body = selected ? <ZoneDetails zone={selected} back={() => setSelectedId(null)} openMissions={() => switchView('missions')} /> : ['towing','fleet'].includes(view) ? <ExternalDataPanel key={view} kind={view} onVehicles={receiveVehicles} onTowing={receiveTowing} /> : view === 'admin' && !mobile ? <AdminPanel refresh={refresh} /> : view === 'missions' ? <MissionInfo /> : view === 'public' ? <PublicDataPanel /> : view === 'status' ? <VStack gap={5}>
-    <Heading level={2}>지금의 운영 정보</Heading><Text type="large">{dataLabel}</Text><Text>확인 시각 {formatTime(data?.generatedAt)} KST</Text><Text>원자료 갱신 {formatTime(data?.sourceUpdatedAt)} KST</Text><Text>자료 출처 {data?.sourceName ?? '아직 연결되지 않았습니다.'}</Text><Divider /><Text>등록된 주차존 {zones.length}곳 · 개방 {zones.filter((z) => z.status === 'open').length}곳 · 축소 {zones.filter((z) => z.status === 'reduced').length}곳</Text><Text color="secondary">보행량과 주차 현황의 관측 시각을 함께 확인합니다. 자료가 만료되면 반납 가능 여부를 다시 확인할 때까지 안내를 보류합니다.</Text><Button label="운영 정보 새로고침" onClick={refresh} /><Text type="supporting">기기 이동과 보상은 운영사 및 이용자 인증 연결 후 이용할 수 있습니다.</Text>
+  const body = selected ? <ZoneDetails zone={selected} openMissions={() => switchView('missions')} /> : view === 'menu' ? <VStack gap={0}>{menu.map(([id, label, hint]) => <VStack key={id} gap={1} paddingBlock={3} style={{ borderBottom: 'var(--border-width) solid var(--color-border)' }}><Button label={label} variant="ghost" onClick={() => switchView(id)} /><Text type="supporting">{hint}</Text></VStack>)}</VStack> : ['towing','fleet'].includes(view) ? <ExternalDataPanel key={view} kind={view} onVehicles={receiveVehicles} onTowing={receiveTowing} /> : view === 'admin' && !mobile ? <AdminPanel refresh={refresh} /> : view === 'missions' ? <MissionInfo /> : view === 'public' ? <PublicDataPanel /> : view === 'status' ? <VStack gap={5}>
+    <Text type="large">{dataLabel}</Text><Text>주차존 {zones.length}곳 · 개방 {zones.filter((z) => z.status === 'open').length}곳 · 축소 {zones.filter((z) => z.status === 'reduced').length}곳</Text><Text type="supporting">확인 {formatTime(data?.generatedAt)} KST · 원자료 {formatTime(data?.sourceUpdatedAt)} KST · {data?.sourceName ?? '출처 미연결'}</Text><Button label="새로고침" onClick={refresh} />
   </VStack> : view === 'help' ? <VStack gap={5}>
-    <Heading level={2}>지도를 이용하는 방법</Heading><Text type="large">주차존의 상태와 이용 가능한 기기를 먼저 확인해 주세요.</Text><VStack gap={3}>{Object.entries(statuses).map(([key, label]) => <HStack key={key} gap={3}><Text type="label" style={{ color: colors[key] }}>{label}</Text><Text>{({ open: '현재 운영 중인 주차존', reduced: '수용량을 줄여 운영하는 주차존', closed: '신규 반납을 받지 않는 주차존', unknown: '최신 정보를 확인 중인 주차존' })[key]}</Text></HStack>)}</VStack><Divider /><Text>내 위치는 주변 탐색을 위해 브라우저에서 사용합니다. 정확한 GPS 좌표를 이 서비스 서버에 전송하지는 않습니다. 다만 내 위치 주변 지도를 열면 OpenStreetMap에 해당 지역의 지도 타일 요청이 전달됩니다.</Text><Text>실제 등록된 주차존만 안내하며, 빈 보도가 주차 허용 공간을 의미하지는 않습니다.</Text><Link href="/">상품 소개 보기</Link>
+    <VStack gap={3}>{Object.entries(statuses).map(([key, label]) => <HStack key={key} gap={3}><Text type="label" style={{ color: colors[key] }}>{label}</Text><Text>{({ open: '현재 운영 중인 주차존', reduced: '수용량을 줄여 운영하는 주차존', closed: '신규 반납을 받지 않는 주차존', unknown: '최신 정보를 확인 중인 주차존' })[key]}</Text></HStack>)}</VStack><Divider /><Text type="supporting">내 위치는 브라우저에서만 쓰며 GPS 좌표를 서버로 보내지 않습니다. 단, 주변 지도 타일 요청은 OpenStreetMap에 전달됩니다. 등록된 주차존만 안내하며, 빈 보도는 주차 허용 공간이 아닙니다.</Text>
   </VStack> : <VStack gap={4}>
-    {filters}<HStack gap={2} wrap="wrap">{Object.entries(statuses).map(([key, label]) => <Button key={key} label={label} size="sm" variant={layers.includes(key) ? 'secondary' : 'ghost'} aria-pressed={layers.includes(key)} onClick={() => { setLayers((prev) => prev.includes(key) ? prev.filter((s) => s !== key) : [...prev, key]); setSelectedId(null); }} />)}</HStack>
-    <HStack hAlign="between" gap={2}><Text color="secondary">{position ? '내 위치에서 가까운 순' : '지도 주변 주차존'} · {visibleZones.length}곳</Text><Button label={boundsOnly ? '지도 범위만' : '전체 지역'} size="sm" variant="ghost" aria-pressed={boundsOnly} onClick={() => setBoundsOnly((value) => !value)} /></HStack>
-    {!visibleZones.length ? <VStack gap={4} paddingBlock={5}><Heading level={2}>{connection === 'loading' ? '주차존을 확인하고 있어요' : !online ? '최신 정보를 확인할 수 없어요' : data?.status === 'unconfigured' ? '주차존 연결을 준비하고 있어요' : data?.status === 'error' ? '운영 정보를 다시 확인하고 있어요' : '조건에 맞는 주차존이 없어요'}</Heading><Text type="large" color="secondary">{data?.status === 'unconfigured' ? '운영이 확인된 주차존부터 안내합니다. 지금은 지도를 자유롭게 살펴보세요.' : '검색 조건을 바꾸거나 지도 범위를 넓혀 주세요. 연결 상태는 운영 상태에서 확인할 수 있습니다.'}</Text><Button label="전체 주차존 보기" onClick={showAll} /></VStack> : <VStack gap={0}>{visibleZones.map((zone) => <VStack key={zone.id} paddingBlock={4} gap={2} style={{ borderBottom: 'var(--border-width) solid var(--color-border)' }}><HStack hAlign="between" gap={2}><Button label={zone.name} variant="ghost" size="sm" onClick={() => select(zone.id)} /><ZoneStatus zone={zone} /></HStack><Text color="secondary">{zone.address}</Text><Text>{zone.vehicleTypes.map((type) => types[type]).join(' · ')} · 반납 여유 {zone.available}대{position ? ` · 직선 ${distance(distanceM(position.point, zone.point))}` : ''}</Text></VStack>)}</VStack>}
+    <HStack hAlign="between" vAlign="center" gap={2}><Text color="secondary">{position ? '가까운 순' : boundsOnly ? '지도 범위' : '전체 지역'} · {visibleZones.length}곳</Text><Button label={filtersOpen ? '필터 닫기' : '검색·필터'} size="sm" variant="secondary" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)} /></HStack>
+    {filtersOpen && <VStack gap={3}>{filters}<HStack gap={2} wrap="wrap">{Object.entries(statuses).map(([key, label]) => <Button key={key} label={label} size="sm" variant={layers.includes(key) ? 'secondary' : 'ghost'} aria-pressed={layers.includes(key)} onClick={() => { setLayers((prev) => prev.includes(key) ? prev.filter((s) => s !== key) : [...prev, key]); setSelectedId(null); }} />)}</HStack>
+<Button label={boundsOnly ? '지도 범위만' : '전체 지역'} size="sm" variant="ghost" aria-pressed={boundsOnly} onClick={() => setBoundsOnly((value) => !value)} /></VStack>}
+    {!visibleZones.length ? <VStack gap={4} paddingBlock={5}><Heading level={2}>{connection === 'loading' ? '주차존을 확인하고 있어요' : !online ? '최신 정보를 확인할 수 없어요' : data?.status === 'unconfigured' ? '주차존 연결을 준비하고 있어요' : data?.status === 'error' ? '운영 정보를 다시 확인하고 있어요' : '조건에 맞는 주차존이 없어요'}</Heading><Text color="secondary">{data?.status === 'unconfigured' ? '운영이 확인된 주차존부터 안내합니다.' : '검색 조건을 바꾸거나 지도 범위를 넓혀 주세요.'}</Text><Button label="전체 주차존 보기" onClick={showAll} /></VStack> : <VStack gap={0}>{visibleZones.map((zone) => <VStack key={zone.id} paddingBlock={4} gap={2} style={{ borderBottom: 'var(--border-width) solid var(--color-border)' }}><HStack hAlign="between" gap={2}><Button label={zone.name} variant="ghost" size="sm" onClick={() => select(zone.id)} /><ZoneStatus zone={zone} /></HStack><Text>{zone.vehicleTypes.map((type) => types[type]).join(' · ')} · 반납 여유 {zone.available}대{position ? ` · 직선 ${distance(distanceM(position.point, zone.point))}` : ''}</Text></VStack>)}</VStack>}
   </VStack>;
-  return <AppShell height="fill" variant="surface" topNav={<TopNav label="지도 서비스 메뉴" heading={<Link href="/" type="large" weight="bold">PM 주차존</Link>} startContent={<Text color="secondary">{citizen ? '시민용 지도' : '동적 주차존 지도'}</Text>} endContent={<HStack gap={4}><Link href={citizen ? '/service' : '/mobile'}>{citizen ? '큰 지도' : '모바일 웹'}</Link><Link href="/">상품 소개</Link></HStack>} />}>
+  return <AppShell height="fill" variant="surface" topNav={<TopNav label="지도 서비스 메뉴" heading={<Link href="/" type="large" weight="bold">PM 주차존</Link>} endContent={<Link href={citizen ? '/service' : '/mobile'}>{citizen ? '큰 지도' : '모바일 웹'}</Link>} />}>
     <HStack height="100%" gap={0} style={{ minHeight: 0, position: 'relative', overflow: 'hidden' }}>
-      {!mobile && <VStack as="aside" width="24rem" height="100%" gap={0} style={{ flexShrink: 0, borderInlineEnd: 'var(--border-width) solid var(--color-border)', background: 'var(--color-background-surface)' }} aria-label="주차존 탐색 패널"><VStack padding={5} gap={4}><Heading level={3} accessibilityLevel={1}>{panelTitle}</Heading>{nav}<Divider /></VStack><VStack key={selected?.id ?? view} padding={5} gap={4} isScrollable style={{ flex: 1, minHeight: 0 }}>{body}</VStack></VStack>}
+      {!mobile && <VStack as="aside" width="24rem" height="100%" gap={0} style={{ flexShrink: 0, borderInlineEnd: 'var(--border-width) solid var(--color-border)', background: 'var(--color-background-surface)' }} aria-label="주차존 탐색 패널"><HStack padding={5} hAlign="between" vAlign="center" gap={2}><Heading level={3} accessibilityLevel={1}>{panelTitle}</Heading>{nav}</HStack><Divider /><VStack key={selected?.id ?? view} padding={5} gap={4} isScrollable style={{ flex: 1, minHeight: 0 }}>{body}</VStack></VStack>}
       <VStack height="100%" style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
         <ZoneMap zones={mapZones} vehicles={vehicles} towingAreas={towingAreas} selectedId={selectedId} onSelect={select} onBoundsChange={onBoundsChange} focus={focus} position={position} bottomFraction={bottomFraction} />
         <VStack gap={2} style={{ position: 'absolute', top: 'var(--spacing-4)', left: 'var(--spacing-4)', zIndex: 2, maxWidth: mobile ? 'calc(100% - 5rem)' : '24rem' }}>
-          <VStack padding={3} gap={1} style={surface}><Text type="label">{view === 'fleet' ? 'PM 위치 · TAGO' : view === 'towing' ? '견인 이력 · 주소별 분석' : dataLabel}</Text>{view === 'towing' && <Text type="supporting">원의 크기 = 견인 건수 · 주소 대표점</Text>}{!['fleet','towing'].includes(view) && <Text type="supporting">{data?.generatedAt ? `${formatTime(data.generatedAt)} KST 확인` : '현재 운영 정보를 확인하고 있습니다'}</Text>}</VStack>
+          <VStack padding={3} gap={1} style={surface}><Text type="label">{view === 'fleet' ? 'PM 위치 · TAGO' : view === 'towing' ? '견인 이력 · 주소별 분석' : dataLabel}</Text>{view === 'towing' && <Text type="supporting">원의 크기 = 견인 건수 · 주소 대표점</Text>}</VStack>
           {!(mobile && selected) && <HStack gap={2} wrap="wrap"><Button label={locating ? '위치 확인 중' : '내 위치'} isLoading={locating} onClick={() => setLocationConsent(true)} elevation="low" /><Button label="전체 존" onClick={() => setFocus({ points: zones.map((zone) => zone.point) })} elevation="low" /></HStack>}
           {locationStatus && <VStack padding={3} style={surface}><Text role="status">{locationStatus}</Text><Button label="위치 안내 닫기" size="sm" variant="ghost" onClick={() => setLocationStatus('')} /></VStack>}
         </VStack>
         {!mobile && <VStack padding={3} style={{ ...surface, position: 'absolute', bottom: 'var(--spacing-5)', left: 'var(--spacing-5)', zIndex: 2 }}><HStack gap={4}>{view === 'towing' && <Text type="label">견인 건수별 주소 위치 · 금지 경계 아님</Text>}{(view === 'towing' ? [] : Object.keys(statuses)).map((status) => <Text key={status} type="label" style={{ color: colors[status] }}>{statuses[status]}</Text>)}</HStack></VStack>}
       </VStack>
       {mobile && <VStack as="aside" aria-label="시민용 탐색 패널" gap={0} style={{ ...surface, position: 'absolute', insetInline: 0, bottom: 0, zIndex: 3, maxHeight: `${bottomFraction * 100}%`, paddingBottom: 'env(safe-area-inset-bottom)', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}>
-        <VStack padding={3} gap={3}><HStack hAlign="between" vAlign="center" gap={2}><Heading level={3} accessibilityLevel={1}>{selected ? selected.name : panelTitle}</Heading><Button label={expanded ? '패널 줄이기' : '목록 펼치기'} size="sm" variant="ghost" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)} /></HStack>{nav}</VStack>
+        <VStack padding={3} gap={2}><HStack hAlign="between" vAlign="center" gap={2}><Heading level={3} accessibilityLevel={1}>{panelTitle}</Heading><Button label={expanded ? '줄이기' : '펼치기'} size="sm" variant="ghost" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)} /></HStack>{nav}</VStack>
         <VStack key={selected?.id ?? view} padding={4} gap={4} isScrollable style={{ minHeight: 0 }}>{body}</VStack>
       </VStack>}
     </HStack>
