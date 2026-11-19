@@ -20,8 +20,11 @@ export default function AdminPanel({ refresh }) {
   useEffect(() => {
     const controller = new AbortController();
     fetchExternalData('/api/towing/candidates', controller.signal).then((data) => setCandidates(Array.isArray(data.candidates) ? data.candidates : [])).catch(() => {});
+    fetchExternalData('/api/parking/official', controller.signal).then((data) => setOfficial(Array.isArray(data.zones) ? data.zones.filter((z) => z.point) : [])).catch(() => {});
     return () => controller.abort();
   }, []);
+  const [official, setOfficial] = useState([]);
+  const pickOfficial = (id) => { const z = official.find((row) => row.id === id); if (z) setForm({ ...blank(), id: `seoul-${z.id}`, name: z.name, address: z.address, lat: String(z.point[0]), lng: String(z.point[1]), parkingAuthorized: true }); };
   const [log, setLog] = useState(null);
   const loadLog = () => fetch('/api/admin/log', { cache: 'no-store', headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) })
     .then((response) => response.ok ? response.json() : Promise.reject()).then((data) => setLog(data.entries)).catch(() => setLog(null));
@@ -61,6 +64,7 @@ export default function AdminPanel({ refresh }) {
     </HStack>)}</VStack>
     <Divider />
     <Heading level={3}>존 정보</Heading>
+    {!!official.length && <Selector label="서울시 지정 PM 주차구역에서 가져오기" description="서울시 예산으로 지정된 실제 주차구역입니다. 공간 사용 권한이 미리 체크되지만 경계·유효폭·보행량은 현장에서 측정해 입력하세요." value="" onChange={pickOfficial} options={[{ value: '', label: '선택 안 함' }, ...official.map((z) => ({ value: z.id, label: `${z.name} · ${z.address.replace('서울특별시 관악구 ', '')}${z.hasStand ? ' · 거치대' : ''}` }))]} />}
     {!!candidates.length && <Selector label="후보 탐색지에서 위치 가져오기" value="" onChange={pick} options={[{ value: '', label: '직접 입력' }, ...candidates.map((c) => ({ value: c.id, label: `${c.address} 주변 · 견인 ${c.towingCount}건` }))]} />}
     <TextInput label="존 ID (영문·숫자, 저장 후 변경하면 새 존이 됩니다)" value={form.id} onChange={set('id')} isRequired />
     <TextInput label="존 이름" value={form.name} onChange={set('name')} isRequired />

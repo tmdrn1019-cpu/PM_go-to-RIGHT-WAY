@@ -54,3 +54,18 @@ test('외부 Origin 및 전용 헤더 없는 변경 요청을 거절한다', asy
   assert.equal(response.status, 200);
   assert.equal((await response.json()).mode, 'demo');
 });
+
+test('서비스 앱은 시연 API를 /api/demo 아래에만 두고 서비스 상태와 섞지 않는다', async (t) => {
+  const { createServiceApp } = await import('../server/service-app.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'pm-test-')); const store = createStore(join(dir, 'demo.sqlite'));
+  const server = createServiceApp({ feedPath: '', publicData: { apiKey: '' }, demoStore: store }).listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(async () => { await new Promise((resolve) => server.close(resolve)); store.close(); rmSync(dir, { recursive: true, force: true }); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const demo = await (await fetch(`${base}/api/demo/state`)).json();
+  assert.equal(demo.mode, 'demo'); assert.ok(demo.offers.length > 0);
+  assert.equal((await fetch(`${base}/api/state`)).status, 404);
+  assert.equal((await (await fetch(`${base}/api/service/state`)).json()).zones.length, 0);
+  const accepted = await fetch(`${base}/api/demo/command`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-PM-Demo': '1' }, body: JSON.stringify({ type: 'accept', scooterId: demo.offers[0].id, destinationId: demo.offers[0].destinations[0].id }) });
+  assert.equal(accepted.status, 200);
+  assert.equal((await fetch(`${base}/api/demo/command`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 403);
+});

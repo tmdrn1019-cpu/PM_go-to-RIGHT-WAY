@@ -1,10 +1,19 @@
 import { randomUUID } from 'node:crypto';
-import { demoZones, demoPolicy } from './fixtures.mjs';
+import { demoZones, demoPolicy, demoTowingAreas } from './fixtures.mjs';
 import { evaluateZone, LOS_REFERENCE, distanceM, distanceToRouteM, koreaDay } from './engine.mjs';
 
 const active = (mission) => ['moving', 'verifying'].includes(mission.status);
 const requireValue = (condition, message, status = 409) => { if (!condition) throw Object.assign(new Error(message), { status }); };
 const timestamp = (at) => new Date(at).getTime();
+const towingAreaAt = (point) => demoTowingAreas.find((area) => distanceM(point, area.point) <= area.radiusM);
+// Shortest way out: straight from the area's center through the start point, to the edge plus a margin.
+export function exitPoint(area, from, marginM) {
+  const scaleY = 111_195; const scaleX = scaleY * Math.cos(area.point[0] * Math.PI / 180);
+  let dx = (from[1] - area.point[1]) * scaleX; let dy = (from[0] - area.point[0]) * scaleY;
+  const length = Math.hypot(dx, dy); if (length < 0.5) { dx = 0; dy = 1; } else { dx /= length; dy /= length; }
+  const reach = area.radiusM + marginM;
+  return [area.point[0] + dy * reach / scaleY, area.point[1] + dx * reach / scaleX];
+}
 
 export function createDemo(at = '2026-11-19T17:30:00+09:00') {
   requireValue(typeof at === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/.test(at) && Number.isFinite(timestamp(at)), '시연 시각이 올바르지 않습니다.', 400);
@@ -48,7 +57,14 @@ export function snapshot(state) {
     const origin = zones.find((z) => z.id === scooter.zoneId);
     const destinations = zones.filter((z) => z.id !== origin.id && z.available > 0 && ['open', 'reduced'].includes(z.status))
       .map((z) => ({ id: z.id, name: z.name, distanceM: Math.round(distanceM(origin.point, z.point)), available: z.available }))
+      // Older saved demo states predate maxMoveM, so fall back to the fixture value.
+      .filter((d) => d.distanceM <= (state.policy.maxMoveM ?? demoPolicy.maxMoveM))
       .sort((a, b) => a.distanceM - b.distanceM);
+    const area = towingAreaAt(origin.point);
+    if (area) {
+      const point = exitPoint(area, origin.point, state.policy.exitMarginM ?? demoPolicy.exitMarginM);
+      destinations.unshift({ id: 'exit', name: `${area.name} 밖`, distanceM: Math.round(distanceM(origin.point, point)), available: null, towingAreaId: area.id, point });
+    }
     return { ...scooter, originName: origin.name, destinations };
   });
   const todayCount = state.missions.filter((m) => koreaDay(m.acceptedAt) === koreaDay(state.now)).length;
@@ -83,14 +99,16 @@ export function command(state, action) {
     requireValue(!scooter.lastMovedAt || timestamp(state.now) - timestamp(scooter.lastMovedAt) >= state.policy.recentMoveMinutes * 60_000, '최근 이동된 기기는 제외합니다.');
     const offer = view.offers.find((s) => s.id === scooter.id);
     requireValue(offer, '현재 이동 대상 기기가 아닙니다.');
-    requireValue(offer.destinations.some((d) => d.id === action.destinationId), '목적지에 수용 가능한 정원이 없습니다.');
+    requireValue(offer.destinations.some((d) => d.id === action.destinationId), '목적지에 남은 수용 정원이 없거나 걸어서 옮길 수 있는 거리를 넘습니다.');
     requireValue(action.failUnlock === undefined || typeof action.failUnlock === 'boolean', '장치 시연 옵션이 올바르지 않습니다.', 400);
     requireValue(!action.failUnlock, '모의 장치 잠금 해제에 실패했습니다.', 502);
     const origin = state.zones.find((z) => z.id === scooter.zoneId);
-    const destination = state.zones.find((z) => z.id === action.destinationId);
-    const mission = { id: randomUUID(), scooterId: scooter.id, originId: origin.id, destinationId: destination.id, status: 'moving', acceptedAt: state.now, expiresAt: new Date(timestamp(state.now) + state.policy.deadlineMinutes * 60_000).toISOString(), route: [origin.point, [destination.point[0], origin.point[1]], destination.point], position: null, alarmed: false, verdict: null };
+    const exit = action.destinationId === 'exit' ? offer.destinations[0] : null;
+    const destination = exit ? null : state.zones.find((z) => z.id === action.destinationId);
+    const route = exit ? [origin.point, exit.point] : [origin.point, [destination.point[0], origin.point[1]], destination.point];
+    const mission = { id: randomUUID(), scooterId: scooter.id, originId: origin.id, destinationId: action.destinationId, ...(exit ? { towingAreaId: exit.towingAreaId, target: exit.point } : {}), status: 'moving', acceptedAt: state.now, expiresAt: new Date(timestamp(state.now) + state.policy.deadlineMinutes * 60_000).toISOString(), route, position: null, alarmed: false, verdict: null };
     state.missions.unshift(mission);
-    event(state, 'unlock', '모의 잠금 해제 성공 · 목적지 정원 1대 예약', mission.id);
+    event(state, 'unlock', exit ? `모의 잠금 해제 성공 · ${exit.name}으로 ${exit.distanceM}m 이동` : '모의 잠금 해제 성공 · 목적지 정원 1대 예약', mission.id);
     return mission;
   }
   requireValue(['position', 'complete', 'cancel'].includes(action.type), '지원하지 않는 명령입니다.', 400);
@@ -120,9 +138,15 @@ export function command(state, action) {
     return mission;
   }
   requireValue(validPosition(state, mission.position), '최신의 정확한 도착 위치가 필요합니다.');
-  const destination = snapshot(state).zones.find((z) => z.id === mission.destinationId);
-  requireValue(['open', 'reduced'].includes(destination.status) && destination.parked + destination.reserved <= destination.capacity, '목적지가 폐쇄되었거나 수용량이 부족합니다. 취소 후 운영사에 인계하세요.');
-  requireValue(distanceM(mission.position.point, destination.point) + mission.position.accuracy <= state.policy.arrivalRadiusM, '도착 위치가 목적지 주차존 내부로 확인되지 않습니다.');
+  const destination = mission.destinationId === 'exit' ? null : snapshot(state).zones.find((z) => z.id === mission.destinationId);
+  if (destination) {
+    requireValue(['open', 'reduced'].includes(destination.status) && destination.parked + destination.reserved <= destination.capacity, '목적지가 폐쇄되었거나 수용량이 부족합니다. 취소 후 운영사에 인계하세요.');
+    requireValue(distanceM(mission.position.point, destination.point) + mission.position.accuracy <= state.policy.arrivalRadiusM, '도착 위치가 목적지 주차존 내부로 확인되지 않습니다.');
+  } else {
+    const area = demoTowingAreas.find((a) => a.id === mission.towingAreaId);
+    // GPS error is subtracted so a fix near the edge never counts as having left the area.
+    requireValue(area && distanceM(mission.position.point, area.point) - mission.position.accuracy > area.radiusM, '견인 구역을 벗어난 위치로 확인되지 않습니다.');
+  }
   requireValue(action.photoPresent === true, '사진 증빙이 필요합니다.', 400);
   requireValue(['approved', 'rejected', 'uncertain'].includes(action.verdict), '사진 판정값이 올바르지 않습니다.', 400);
   mission.verdict = action.verdict;
@@ -132,7 +156,7 @@ export function command(state, action) {
     return mission;
   }
   mission.status = 'completed'; mission.completedAt = state.now;
-  scooter.zoneId = destination.id; scooter.lastMovedAt = state.now; scooter.needsOperator = false;
+  scooter.zoneId = destination?.id ?? null; scooter.lastMovedAt = state.now; scooter.needsOperator = false;
   state.points += state.policy.reward;
   event(state, 'reward', `이동 완료 · ${state.policy.reward.toLocaleString('ko-KR')} 시연 포인트 적립`, mission.id);
   return mission;
