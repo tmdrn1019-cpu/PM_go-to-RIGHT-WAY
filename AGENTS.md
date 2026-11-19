@@ -100,7 +100,7 @@
 - `data/demo.sqlite`는 시연 상태를 보존한다. 실제 사진·GPS를 넣지 않는다. `시연 초기화` 외의 작업에서 저장 상태를 임의로 삭제하지 않는다. 화면에 표시하는 현재 보행량으로 전망 계산의 원본값을 덮어쓰지 않는다.
 - 실행 중인 API는 `/api/service/state`이며 `/api/state`와 `/api/command`는 제공하지 않는다. `SERVICE_DATA_FILE`이 없으면 실제 존을 임의로 만들지 않는다. 운영 입력 계약은 `docs/service-data.md`를 따른다.
 - `/api/public-data`는 서울시 공식 API 참고 조회다. `SEOUL_OPEN_DATA_KEY`가 없으면 호출하지 않는다. 설정·공식 HTTP 전송·캐시·부분 조회 범위는 `docs/seoul-data.md`를 따른다. 10분 S-DoT를 15분 실측으로 바꾸거나 주소만으로 좌표·경계·운영 승인을 만들지 않는다.
-- `/api/towing/areas`는 실제 견인 이력을 주소별 집계한 분석구역이다. 사용자가 법적 반납금지 경계 대신 이 방식을 선택했으며 좌표 변환 키가 없어 주소별 집계부터 진행했다. `npm run sync:towing`과 `data/towing-areas.json`을 사용하고 분석구역을 허가 주차존으로 바꾸지 않는다. `/api/pm/vehicles`는 `TAGO_SERVICE_KEY`로 공식 PM 조회를 제공하며 응답 지역을 검증한다. 서울 미지원·부분 조회·관측 시각 부재를 숨기지 않는다.
+- `/api/towing/areas`는 실제 견인 이력을 주소별 집계한 분석구역이다. 사용자가 법적 반납금지 경계 대신 이 방식을 선택했다. `npm run sync:towing`과 `data/towing-areas.json`을 사용하고 분석구역을 허가 주차존으로 바꾸지 않는다. SGIS는 서버 전용 `SGIS_SERVICE_ID`·`SGIS_SECURITY_KEY`로 `npm run geocode:towing`에서 주소를 변환한다. 비공개 `data/towing-geocodes.json`의 정확한 주소 일치 결과만 대표점으로 표시하며 법적 경계를 만들지 않는다. 설정과 이용 조건은 `docs/sgis-geocoding.md`를 따른다. `/api/pm/vehicles`는 `TAGO_SERVICE_KEY`로 공식 PM 조회를 제공하며 응답 지역을 검증한다. 서울 미지원·부분 조회·관측 시각 부재를 숨기지 않는다.
 - 개발 서버의 `data/`, `.superpowers/`, `private/` 및 원자료 파일 제공 차단을 유지한다. 원자료를 `dist/` 등 정적 위치에 복사하지 않는다. 탭 복귀·요청 지연·판정 만료에서 오래된 반납 가능 표시를 유지하지 않는다.
 - 비단순 로직에는 작은 자동 테스트나 assert 기반 자체 검증을 남긴다. 버그 수정에는 원래 실패를 재현하는 검증을 포함한다. 문구만 바꾸는 작업에 형식적인 테스트를 추가하지 않는다.
 - 엔진은 단위 환산, 유효폭 `2.0m` 경계, LOS 등급 경계, 입력 누락, 수용량 변경을 확인한다. 시간 처리는 자정·날짜 경계와 폐쇄 전 전환을 확인한다.
