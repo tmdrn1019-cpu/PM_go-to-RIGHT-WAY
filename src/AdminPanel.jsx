@@ -22,13 +22,16 @@ export default function AdminPanel({ refresh }) {
     fetchExternalData('/api/towing/candidates', controller.signal).then((data) => setCandidates(Array.isArray(data.candidates) ? data.candidates : [])).catch(() => {});
     return () => controller.abort();
   }, []);
+  const [log, setLog] = useState(null);
+  const loadLog = () => fetch('/api/admin/log', { cache: 'no-store', headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) })
+    .then((response) => response.ok ? response.json() : Promise.reject()).then((data) => setLog(data.entries)).catch(() => setLog(null));
   const call = async (method, path, body) => {
     setBusy(true); setMessage('');
     try {
       const response = await fetch(`/api/admin${path}`, { method, cache: 'no-store', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body && JSON.stringify(body), signal: AbortSignal.timeout(10_000) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) { if (response.status === 401) setFeed(null); throw new Error(data.error ?? '요청을 처리하지 못했습니다.'); }
-      setFeed(data); return data;
+      setFeed(data); loadLog(); return data;
     } catch (error) { setMessage(error.name === 'TimeoutError' ? '서버 응답이 없습니다. 저장 여부를 운영 목록에서 다시 확인하세요.' : error.message); return null; } finally { setBusy(false); }
   };
   const save = async () => {
@@ -49,6 +52,7 @@ export default function AdminPanel({ refresh }) {
   return <VStack gap={4}>
     <Heading level={2}>운영자 존 등록</Heading>
     {message && <Text aria-live="assertive">{message}</Text>}
+    <Text type="label">{feed.admin} 계정으로 작업 중</Text>
     <Text>등록된 존 {feed.zones?.length ?? 0}곳 · 운영 파일 발행 {new Date(feed.publishedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} KST</Text>
     <CheckboxInput label="보행 LOS 참고 기준을 운영 기준으로 승인" description="2022 보행업무편람 수록 보도 LOS(A≤20 … E≤106 명/분/m). 적용성을 검토한 운영 주체만 승인하세요. 승인 전에는 모든 존이 판정 보류입니다." value={feed.profile?.approvedForService === true} isDisabled={busy} onChange={(checked) => call('PUT', '/profile', { approvedForService: checked })} />
     <VStack gap={0}>{(feed.zones ?? []).map((zone) => <HStack key={zone.id} hAlign="between" gap={2} paddingBlock={2} style={{ borderBottom: 'var(--border-width) solid var(--color-border)' }}>
@@ -67,7 +71,7 @@ export default function AdminPanel({ refresh }) {
     {form.scooter && form.ebike && <CheckboxInput label="두 기기 공통 정원을 현장에서 확인함" value={form.capacityAppliesToAllTypes} onChange={set('capacityAppliesToAllTypes')} />}
     <CheckboxInput label="공간 사용 권한 확인됨" description="제휴·허가 등 실제 사용 권한이 확인된 경우에만 선택하세요." value={form.parkingAuthorized} onChange={set('parkingAuthorized')} />
     <TextArea label="측정 배치" description="한 줄에 '수용 대수, 주차 후 남는 유효폭(m)'. 예: 10, 2.4" value={form.layouts} onChange={set('layouts')} isRequired />
-    <TextArea label="운영시간 (한국 시각)" description="한 줄에 HH:mm-HH:mm. 자정을 넘겨도 됩니다. 비우면 상시 운영." value={form.windows} onChange={set('windows')} isOptional />
+    <TextArea label="운영시간 (한국 시각)" description="한 줄에 HH:mm-HH:mm, 요일 지정은 뒤에 월,화,수처럼 적습니다(예: 09:00-18:00 월,화,수,목,금). 자정을 넘겨도 되며 비우면 상시 운영." value={form.windows} onChange={set('windows')} isOptional />
     <HStack gap={2}><TextInput label="폐쇄 예고 (분 전)" value={form.preCloseMinutes} onChange={set('preCloseMinutes')} isOptional /><TextInput label="예고 시 정원" value={form.preCloseCapacity} onChange={set('preCloseCapacity')} isOptional /></HStack>
     <Heading level={3}>현장 관측</Heading>
     <Text type="supporting">15분 동안 실제로 센 보행자 수를 입력합니다. S-DoT 10분 값이나 역 승하차 추정을 넣지 마세요.</Text>
@@ -77,5 +81,10 @@ export default function AdminPanel({ refresh }) {
     <HStack gap={2}><TextInput label="현재 주차 대수" value={form.parked} onChange={set('parked')} isRequired /><TextInput label="예약 대수" value={form.reserved} onChange={set('reserved')} isRequired /></HStack>
     <HStack gap={2}><TextInput label="주차 현황 확인 시각 (KST)" value={form.inventoryAt} onChange={set('inventoryAt')} isRequired /><TextInput label="유효 시간 (분)" value={form.inventoryMinutes} onChange={set('inventoryMinutes')} isRequired /></HStack>
     <HStack gap={2}><Button label="존 저장" isDisabled={busy} onClick={save} /><Button label="새로 입력" variant="ghost" onClick={() => { setForm(blank()); setMessage(''); }} /></HStack>
+    <Divider />
+    <Heading level={3}>최근 변경 기록</Heading>
+    {log === null ? <Text type="supporting">변경 기록을 불러오지 못했습니다.</Text> : !log.length ? <Text type="supporting">아직 변경 기록이 없습니다.</Text> : <VStack gap={1}>{log.slice(0, 20).map((entry, index) => <Text key={index} type="supporting">
+      {entry.at ? new Date(entry.at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) : '시각 없음'} · {entry.admin ?? '알 수 없음'} · {({ 'save-zone': '존 저장', 'delete-zone': '존 삭제', 'approve-profile': 'LOS 기준 승인', 'revoke-profile': 'LOS 기준 승인 해제' })[entry.action] ?? '읽을 수 없는 기록'}{entry.zoneId ? ` · ${entry.zoneName ?? ''} (${entry.zoneId})` : ''}
+    </Text>)}</VStack>}
   </VStack>;
 }
