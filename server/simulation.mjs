@@ -68,7 +68,7 @@ export function snapshot(state) {
     return { ...scooter, originName: origin.name, destinations };
   });
   const todayCount = state.missions.filter((m) => koreaDay(m.acceptedAt) === koreaDay(state.now)).length;
-  return { ...state, zones, offers, todayCount, operatorHandoffs: state.scooters.filter((s) => s.needsOperator).length, mode: 'demo' };
+  return { ...state, zones, offers, towingAreas: demoTowingAreas, todayCount, operatorHandoffs: state.scooters.filter((s) => s.needsOperator).length, mode: 'demo' };
 }
 
 function validPosition(state, position) {
