@@ -1,0 +1,2 @@
+# Astryx doctor compares the generated theme module byte-for-byte.
+src/astryx-themes.js text eol=lf
