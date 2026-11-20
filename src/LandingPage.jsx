@@ -48,7 +48,7 @@ function HeroScene({ svgRef }) {
 
 const card = { background: 'var(--color-background-surface)', borderRadius: 'var(--radius-container)', boxShadow: 'var(--shadow-low)' };
 const darkCard = { background: ink, color: 'var(--color-background-surface)', borderRadius: 'var(--radius-container)' };
-const band = (tone) => ({ ...screen, background: tone === 'light' ? 'var(--color-background-surface)' : 'var(--color-background-body)' });
+const band = (tone) => ({ ...screen, background: tone === 'light' ? 'var(--color-background-surface)' : 'var(--color-background-muted)' });
 const inner = { width: '100%', maxWidth: '64rem' };
 
 const audiences = {
@@ -131,7 +131,7 @@ export default function LandingPage() {
     <VStack as="section" aria-labelledby="moments-title" gap={10} padding={8} hAlign="center" vAlign="center" style={band('dark')}>
       <Title id="moments-title" before="이런 순간, " accent="PM 주차존" after="이 필요해요" sub="보도는 사람이 먼저 걸어야 하는 공간입니다." />
       <Grid columns={{ minWidth: 220, max: 4 }} gap={4} width="100%" maxWidth="64rem">
-        {moments.map((moment, index) => <Reveal key={moment} delay={index * 0.1} padding={6} vAlign="end" style={{ ...darkCard, minHeight: '14rem' }}><Text type="display-3" style={{ color: paprika }}>{String(index + 1).padStart(2, '0')}</Text><Text type="large" weight="bold" color="inherit" style={{ whiteSpace: 'pre-line' }}>{moment}</Text></Reveal>)}
+        {moments.map((moment, index) => <Reveal key={moment} delay={index * 0.1} padding={6} vAlign="end" style={{ ...darkCard, minHeight: '14rem' }}><Text type="display-3" style={{ color: 'var(--color-background-muted)' }}>{String(index + 1).padStart(2, '0')}</Text><Text type="large" weight="bold" color="inherit" style={{ whiteSpace: 'pre-line' }}>{moment}</Text></Reveal>)}
       </Grid>
     </VStack>
 
