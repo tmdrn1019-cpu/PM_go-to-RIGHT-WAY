@@ -53,7 +53,7 @@ npx vercel --prod
 
 프로젝트 연결 후 Vercel의 **Settings → Environment Variables**에서 `DEMO_PUBLIC_HOST`를 실제 서비스 호스트(예: `pm-zones.vercel.app`, `https://` 없이)로 지정하고 다시 배포하면 모바일 시연 API가 그 호스트에서 열립니다. 필요하면 `SEOUL_OPEN_DATA_KEY`, `TAGO_SERVICE_KEY`도 서버 환경변수로 등록합니다. `.env.local`은 업로드하지 않습니다.
 
-`.vercelignore`는 원자료와 기존 시연 DB를 제외하고, `data/`에서 `public-zones.json`, `towing-areas.json`, `towing-geocodes.json`, `sdot-sensors.json`만 업로드합니다. 이 네 파일은 함수에만 포함하며 정적 URL로 제공하지 않습니다. 파일은 Git에서 제외되므로 가공 데이터가 있는 로컬 폴더에서 CLI로 배포하세요. Git 자동 배포를 쓰려면 별도 비공개 데이터 공급 절차가 필요합니다.
+`.vercelignore`는 원자료와 기존 시연 DB를 제외하고, `data/`에서 `public-zones.json`, `towing-areas.json`, `towing-geocodes.json`, `sdot-sensors.json`만 업로드합니다. 이 네 파일은 함수에만 포함하며 정적 URL로 제공하지 않습니다. 파일은 Git에서 제외되므로 가공 데이터가 있는 로컬 폴더에서 CLI로 배포하세요. 자료 없는 배포가 운영을 덮지 않도록 `vercel.json`의 `git.deploymentEnabled.main: false`로 `main` 자동 배포를 껐습니다(PR 미리보기 배포는 유지). `main`에 머지한 뒤에는 이 폴더에서 `npx vercel --prod`로 운영에 반영합니다. Git 자동 배포를 다시 쓰려면 별도 비공개 데이터 공급 절차가 필요합니다.
 
 **Vercel 모바일 시연의 한계:** 시연 SQLite는 `/tmp/pm-demo.sqlite`에 저장합니다. 서버 인스턴스 교체·재배포 시 초기화되며, 인스턴스가 여러 개면 시연 상태가 서로 다를 수 있습니다. 같은 인스턴스를 쓰는 방문자는 합성 시연 상태를 공유합니다. 연속 시연과 영구 상태 보존이 필요하면 공유 저장소를 연결해야 합니다. 실제 기기·계정·포인트는 연결하지 않습니다.
 

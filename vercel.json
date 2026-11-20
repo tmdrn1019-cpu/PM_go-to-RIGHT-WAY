@@ -4,6 +4,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "regions": ["icn1"],
+  "git": { "deploymentEnabled": { "main": false } },
   "functions": {
     "api/index.mjs": {
       "includeFiles": "data/{public-zones,towing-areas,towing-geocodes,sdot-sensors}.json"
