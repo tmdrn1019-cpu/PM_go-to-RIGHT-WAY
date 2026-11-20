@@ -44,7 +44,10 @@ try {
   const zones = buildHotspotZones({ areas: towing.areas, designated, stations, period, month, sidewalk });
   mkdirSync('data', { recursive: true });
   const temporary = `data/public-zones.json.${process.pid}.tmp`;
-  writeFileSync(temporary, JSON.stringify({ version: 4, builtAt: new Date().toISOString(), period, month, zones }, null, 2));
+  // v5 also carries every geocoded designated zone and towing address for the map's extra layers and the synthetic fleet.
+  const designatedOut = designated.map(({ id, name, address, point }) => ({ id, name, address, point }));
+  const towingHotspots = towing.areas.filter((a) => a.point).map(({ id, address, district, count, point }) => ({ id, address, district, count, point }));
+  writeFileSync(temporary, JSON.stringify({ version: 5, builtAt: new Date().toISOString(), period, month, zones, designated: designatedOut, towingHotspots }, null, 2));
   renameSync(temporary, 'data/public-zones.json');
   if (zones[0]) console.log(`서울 기준선 (역 ${zones[0].thresholds.stations}곳 · 역·시간 ${zones[0].thresholds.stationHours}개): 폐쇄 ${zones[0].thresholds.close}명 이상 · 축소 ${zones[0].thresholds.reduce}명 이상`);
   console.log(`지정 주차구역 ${designated.length}/${parking.records.length}곳 좌표 · 역 ${stations.length}곳 · 존 ${zones.length}곳`);

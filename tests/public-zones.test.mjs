@@ -4,7 +4,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
-import { stationProfiles, buildHotspotZones, publicZonesAt, readPublicZones } from '../server/public-zones.mjs';
+import { stationProfiles, buildHotspotZones, publicZonesAt, readPublicZones, syntheticFleet, towingRisk, SYNTHETIC_RULES } from '../server/public-zones.mjs';
+import { distanceM } from '../server/engine.mjs';
 import { createServiceApp } from '../server/service-app.mjs';
 
 const ride = (STTN, perHour) => Object.fromEntries([['STTN', STTN], ...Array.from({ length: 24 }, (_, h) => [[`HR_${h}_GET_ON_NOPE`, perHour(h) * 30], [`HR_${h}_GET_OFF_NOPE`, 0]]).flat()]);
@@ -57,13 +58,39 @@ test('sidewalk evidence uses the nearest surveyed spot within 300m and never cha
 test('zones API serves the built file, rejects bad times and reports a missing or old file', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'zones-')); const file = join(dir, 'public-zones.json');
   const zones = buildHotspotZones({ areas, designated, stations: stationProfiles(master, rides, 30), period: 'p', month: 'm' });
-  writeFileSync(file, JSON.stringify({ version: 4, builtAt: 'b', month: 'm', zones }));
+  writeFileSync(file, JSON.stringify({ version: 5, builtAt: 'b', month: 'm', period: 'p', zones, designated, towingHotspots: areas }));
   const server = createServiceApp({ feedPath: '', publicData: { apiKey: '' }, publicZonesFile: file }).listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(async () => { await new Promise((resolve) => server.close(resolve)); rmSync(dir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const body = await (await fetch(`${base}/api/zones?at=${encodeURIComponent(new Date().toISOString())}`)).json();
   assert.equal(body.status, 'ready'); assert.equal(body.zones.length, 1);
+  // pk-1 is already a dynamic zone, so only pk-2 is drawn as a plain designated zone.
+  assert.deepEqual(body.designated.map((d) => d.id), ['pk-2']);
+  const fleet = await (await fetch(`${base}/api/zones/synthetic-pm`)).json();
+  assert.equal(fleet.synthetic, true); assert.equal(fleet.riskRadiusM, 30); assert.ok(fleet.vehicles.some((v) => v.risk));
   assert.equal((await fetch(`${base}/api/zones?at=nope`)).status, 400);
   assert.equal(readPublicZones(join(dir, 'missing.json')).status, 'unconfigured');
-  writeFileSync(file, JSON.stringify({ version: 3, zones })); assert.equal(readPublicZones(file).status, 'error');
+  writeFileSync(file, JSON.stringify({ version: 4, zones })); assert.equal(readPublicZones(file).status, 'error');
+  writeFileSync(file, JSON.stringify({ version: 5, zones, designated: [{ id: 'pk-x', name: 'n', point: ['a', 1] }], towingHotspots: areas })); assert.equal(readPublicZones(file).status, 'error');
+  assert.deepEqual((await (await fetch(`${base}/api/zones/synthetic-pm`)).json()).vehicles, []);
+});
+
+test('synthetic fleet is deterministic, marks devices within 30m of a towing address and parks some at designated zones', () => {
+  const fleet = syntheticFleet({ hotspots: areas, designated });
+  assert.deepEqual(syntheticFleet({ hotspots: areas, designated }), fleet);
+  assert.ok(fleet.length > areas.length);
+  for (const v of fleet.filter((x) => !x.designatedId)) {
+    const near = Math.min(...areas.map((a) => distanceM(v.point, a.point)));
+    assert.equal(Boolean(v.risk), near <= SYNTHETIC_RULES.riskRadiusM, v.id);
+    if (v.risk) assert.equal(v.risk.distanceM, Math.round(near));
+  }
+  assert.ok(fleet.some((v) => v.risk) && fleet.some((v) => !v.risk));
+  assert.ok(fleet.some((v) => v.designatedId === 'pk-1'));
+  // A designated zone right on a towing address: the device there is legally parked, not at risk.
+  const parked = syntheticFleet({ hotspots: areas, designated: [{ id: 'pk-on', name: 'on', point: areas[0].point }] }).find((v) => v.designatedId === 'pk-on');
+  assert.ok(towingRisk(parked.point, areas)); assert.equal(parked.risk, null);
+  // Within 30m counts as risk; just past it does not.
+  const edge = [{ ...areas[0], point: [37.5, 127.0] }];
+  const at = (m) => towingRisk([37.5 + m / 111_195, 127.0], edge);
+  assert.ok(at(29.9)); assert.equal(at(30.5), null);
 });

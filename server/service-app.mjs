@@ -7,7 +7,7 @@ import { withGeocodes } from './sgis.mjs';
 import { createDemoRouter } from './app.mjs';
 import { createStore } from './store.mjs';
 import { selectCandidates, readSensorLocations } from './candidates.mjs';
-import { readPublicZones, publicZonesAt } from './public-zones.mjs';
+import { readPublicZones, publicZonesAt, syntheticFleet, SYNTHETIC_RULES } from './public-zones.mjs';
 
 export function createServiceApp({ feedPath = process.env.SERVICE_DATA_FILE, now = () => new Date().toISOString(), publicData = { apiKey: process.env.SEOUL_OPEN_DATA_KEY }, demoStore, publicZonesFile } = {}) {
   const app = express(); app.disable('x-powered-by');
@@ -26,7 +26,14 @@ export function createServiceApp({ feedPath = process.env.SERVICE_DATA_FILE, now
     const at = typeof req.query.at === 'string' ? Date.parse(req.query.at) : Date.parse(now());
     if (!Number.isFinite(at) || Math.abs(at - Date.parse(now())) > 30 * 86_400_000) return res.status(400).json({ error: '조회 시각은 오늘 기준 30일 안의 ISO 시각이어야 합니다.' });
     const data = readPublicZones(publicZonesFile);
-    res.json({ status: data.status, at: new Date(at).toISOString(), builtAt: data.builtAt ?? null, month: data.month ?? null, zones: publicZonesAt(data.zones, at) });
+    const dynamic = new Set(data.zones.map((z) => z.id));
+    const designated = data.designated.filter((d) => !dynamic.has(`seoul-${d.id}`)).map(({ id, name, address, point }) => ({ id, name, address: address ?? null, point }));
+    res.json({ status: data.status, at: new Date(at).toISOString(), builtAt: data.builtAt ?? null, month: data.month ?? null, zones: publicZonesAt(data.zones, at), designated });
+  });
+  // Synthetic demo devices around real towing addresses; never real vehicle positions.
+  app.get('/api/zones/synthetic-pm', (_req, res) => {
+    const data = readPublicZones(publicZonesFile);
+    res.json({ status: data.status, synthetic: true, riskRadiusM: SYNTHETIC_RULES.riskRadiusM, period: data.period ?? null, vehicles: syntheticFleet({ hotspots: data.towingHotspots, designated: data.designated }) });
   });
   // The SQLite demo store opens on first demo request so service-only use never touches it.
   let demoRouter;

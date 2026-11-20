@@ -1,0 +1,17 @@
+.git/
+.claude/
+.superpowers/
+.vercel/
+.env*
+node_modules/
+dist/
+private/
+docs/
+tests/
+*.md
+render.yaml
+data/*
+!data/public-zones.json
+!data/towing-areas.json
+!data/towing-geocodes.json
+!data/sdot-sensors.json
