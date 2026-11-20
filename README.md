@@ -40,6 +40,25 @@ npm start
 
 ## 외부 배포
 
+### Vercel
+
+현재 배포: [상품 소개](https://pm-go-to-right-way.vercel.app) · [지도 서비스](https://pm-go-to-right-way.vercel.app/service) · [모바일 시연](https://pm-go-to-right-way.vercel.app/mobile).
+
+`vercel.json`은 Vite 화면을 정적 제공하고 `api/index.mjs`에서 기존 Express 조회·시연 API를 실행합니다. 보안 헤더와 `/service`, `/mobile` 직접 접속도 설정합니다.
+
+```powershell
+npx vercel login
+npx vercel --prod
+```
+
+프로젝트 연결 후 Vercel의 **Settings → Environment Variables**에서 `DEMO_PUBLIC_HOST`를 실제 서비스 호스트(예: `pm-zones.vercel.app`, `https://` 없이)로 지정하고 다시 배포하면 모바일 시연 API가 그 호스트에서 열립니다. 필요하면 `SEOUL_OPEN_DATA_KEY`, `TAGO_SERVICE_KEY`도 서버 환경변수로 등록합니다. `.env.local`은 업로드하지 않습니다.
+
+`.vercelignore`는 원자료와 기존 시연 DB를 제외하고, `data/`에서 `public-zones.json`, `towing-areas.json`, `towing-geocodes.json`, `sdot-sensors.json`만 업로드합니다. 이 네 파일은 함수에만 포함하며 정적 URL로 제공하지 않습니다. 파일은 Git에서 제외되므로 가공 데이터가 있는 로컬 폴더에서 CLI로 배포하세요. Git 자동 배포를 쓰려면 별도 비공개 데이터 공급 절차가 필요합니다.
+
+**Vercel 모바일 시연의 한계:** 시연 SQLite는 `/tmp/pm-demo.sqlite`에 저장합니다. 서버 인스턴스 교체·재배포 시 초기화되며, 인스턴스가 여러 개면 시연 상태가 서로 다를 수 있습니다. 같은 인스턴스를 쓰는 방문자는 합성 시연 상태를 공유합니다. 연속 시연과 영구 상태 보존이 필요하면 공유 저장소를 연결해야 합니다. 실제 기기·계정·포인트는 연결하지 않습니다.
+
+### Render
+
 `render.yaml`은 GitHub 저장소를 [Render](https://render.com) Node 웹 서비스로 배포하는 설정입니다. `data/`는 git에 올리지 않으므로 서버 실행에 필요한 가공 파일을 Render **Secret Files**로 따로 올립니다.
 
 1. Render에서 GitHub 저장소를 연결하고 **New → Blueprint**로 `render.yaml`을 선택합니다(배포할 브랜치를 고릅니다).

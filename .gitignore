@@ -7,3 +7,5 @@ data/
 private/
 *.log
 .superpowers/
+.vercel/
+.vercel
