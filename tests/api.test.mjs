@@ -68,3 +68,11 @@ test('서비스 앱은 시연 API를 /api/demo 아래에만 두고 서비스 상
   assert.equal(accepted.status, 200);
   assert.equal((await fetch(`${base}/api/demo/command`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 403);
 });
+
+test('시연 API는 로컬 호스트와 DEMO_PUBLIC_HOST로 지정한 배포 호스트만 허용한다', async () => {
+  const { demoHostAllowed } = await import('../server/app.mjs');
+  assert.ok(demoHostAllowed('127.0.0.1:3001') && demoHostAllowed('localhost'));
+  assert.ok(!demoHostAllowed('pm.onrender.com', undefined) && !demoHostAllowed('pm.onrender.com', ''));
+  assert.ok(demoHostAllowed('pm.onrender.com', 'pm.onrender.com'));
+  assert.ok(!demoHostAllowed('evil.onrender.com', 'pm.onrender.com') && !demoHostAllowed(undefined, 'pm.onrender.com'));
+});

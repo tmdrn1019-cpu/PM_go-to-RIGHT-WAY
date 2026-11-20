@@ -1,14 +1,17 @@
-// Synthetic mission demo (mock unlock, alarms, rewards). Served only at /api/demo and only to local hosts.
+// Synthetic mission demo (mock unlock, alarms, rewards). Served only at /api/demo, to local hosts or the one deployed host named in DEMO_PUBLIC_HOST.
 import express from 'express';
 import { command, createDemo, snapshot } from './simulation.mjs';
 
-export function createDemoRouter({ store }) {
+export const demoHostAllowed = (host, publicHost) => /^(127\.0\.0\.1|localhost)(:\d+)?$/.test(host ?? '') || (!!publicHost && host === publicHost);
+
+export function createDemoRouter({ store, publicHost = process.env.DEMO_PUBLIC_HOST }) {
   const router = express.Router();
   router.use((req, res, next) => {
     res.set({ 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin' });
     const host = req.headers.host;
-    if (!/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(host ?? '')) return res.status(403).json({ error: '로컬 시연에서만 사용할 수 있습니다.' });
-    if (req.method !== 'GET' && (req.headers['x-pm-demo'] !== '1' || (req.headers.origin && req.headers.origin !== `http://${host}`))) return res.status(403).json({ error: '같은 출처의 시연 요청만 허용합니다.' });
+    if (!demoHostAllowed(host, publicHost)) return res.status(403).json({ error: '로컬 시연에서만 사용할 수 있습니다.' });
+    const origin = `${host === publicHost ? 'https' : 'http'}://${host}`;
+    if (req.method !== 'GET' && (req.headers['x-pm-demo'] !== '1' || (req.headers.origin && req.headers.origin !== origin))) return res.status(403).json({ error: '같은 출처의 시연 요청만 허용합니다.' });
     next();
   });
   router.use(express.json({ limit: '16kb' }));
