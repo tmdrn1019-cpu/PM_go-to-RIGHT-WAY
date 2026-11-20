@@ -173,4 +173,13 @@ test('견인 구역 안의 기기는 구역 경계 바로 밖까지 가장 짧�
   assert.equal(state.scooters.find((s) => s.id === 'PM-001').zoneId, null);
   assert.equal(snapshot(state).zones.find((z) => z.id === 'z1').parked, 7);
   assert.equal(snapshot(state).offers.some((o) => o.id === 'PM-001'), false);
+  assert.deepEqual(state.scooters.find((s) => s.id === 'PM-001').point, mission.target);
+  const view = snapshot(createDemo());
+  const inside = view.scooters.filter((s) => s.towingArea);
+  assert.deepEqual([...new Set(inside.map((s) => s.zoneId))].sort(), ['z1', 'z3', 'z6']);
+  assert.equal(inside.length, 13);
+  assert.equal(view.offers.some((o) => o.zoneId === 'z6'), false); // returned while closed: operator handoff, not a mission
+  const exits = view.offers.map((o) => o.destinations[0]);
+  assert.ok(exits.every((d) => d.id === 'exit' && d.distanceM >= 10 && d.distanceM <= 40));
+  assert.ok(new Set(exits.map((d) => d.distanceM)).size > 1);
 });

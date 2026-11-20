@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { VStack, HStack } from '@astryxdesign/core/Layout';
 import { Heading, Text } from '@astryxdesign/core/Text';
 import { Button } from '@astryxdesign/core/Button';
@@ -9,7 +9,7 @@ import CandidateList from './CandidateList.jsx';
 
 const time=(value)=>value?new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):'—';
 export default function ExternalDataPanel({kind,onVehicles,onTowing}){
- const [data,setData]=useState(null);const [connection,setConnection]=useState('loading');const [query,setQuery]=useState('');const [limit,setLimit]=useState(30);const [choice,setChoice]=useState(null);const [version,setVersion]=useState(0);
+ const [data,setData]=useState(null);const [connection,setConnection]=useState('loading');const [query,setQuery]=useState('');const [limit,setLimit]=useState(30);const [choice,setChoice]=useState(null);const [version,setVersion]=useState(0);const autoPicked=useRef(false);
  const fleet=kind==='fleet';
  useEffect(()=>{
   let stopped=false;let timer;let controller;let first=true;
@@ -19,6 +19,8 @@ export default function ExternalDataPanel({kind,onVehicles,onTowing}){
    try{const path=fleet?`/api/pm/vehicles${choice?`?cityCode=${encodeURIComponent(choice.cityCode)}&provider=${encodeURIComponent(choice.provider)}`:''}`:'/api/towing/areas';
     const next=await fetchExternalData(path,controller.signal);
     if(!['ready','unconfigured','unsupported','error'].includes(next.status)||!Array.isArray(fleet?next.vehicles:next.areas))throw new Error('invalid');
+    // Seoul has no TAGO coverage, so show the first supported provider's real scooters once instead of an empty map.
+    if(!stopped&&fleet&&!choice&&!autoPicked.current&&next.status==='unsupported'&&next.providers?.length){autoPicked.current=true;setChoice(next.providers[0]);return;}
     if(!stopped){setData(next);setConnection('online');if(fleet)onVehicles(next.status==='ready'?next.vehicles:[],first);else onTowing(next.status==='ready'?next.areas.filter(row=>row.geocodeStatus==='matched'):[],first);first=false;}
    }catch{if(!stopped){setConnection('offline');if(fleet)onVehicles([]);else onTowing([]);}}
    finally{if(!stopped)timer=setTimeout(read,60000);}
@@ -34,6 +36,7 @@ export default function ExternalDataPanel({kind,onVehicles,onTowing}){
   {data?.sourceUrl&&<Link href={data.sourceUrl} target="_blank" rel="noopener noreferrer">공식 원자료 보기</Link>}
   {fleet?<>
    <Text type="supporting">선택 지역: {data?.cityName??'서울'} · 수집 {time(data?.collectedAt)} KST</Text>
+   {autoPicked.current&&choice&&<Text>서울(관악구)은 TAGO가 지원하지 않아 {choice.cityName} {choice.provider}의 실제 기기 위치를 보여 줍니다. 아래에서 다른 운영사를 고를 수 있습니다.</Text>}
    {data?.status==='unsupported'&&<Text>TAGO 응답에 서울 관악구의 운영사가 없습니다. 이는 관악구에 기기가 0대라는 뜻이 아닙니다. 아래 지원 지역을 선택하면 지도가 해당 지역으로 이동합니다.</Text>}
    <HStack gap={2} wrap="wrap">{data?.providers?.map(provider=><Button key={`${provider.cityCode}:${provider.provider}`} label={`${provider.cityName} · ${provider.provider}`} size="sm" variant="secondary" onClick={()=>{setChoice(provider);setQuery('');setLimit(30);}}/>)}{choice&&<Button label="관악구 지원 확인" size="sm" variant="ghost" onClick={()=>setChoice(null)}/>}</HStack>
    {data?.status==='ready'&&<Text>원본 {data.totalRows}대 중 {rows.length}대 조회{data.partial?' · 일부 조회':''}. 원자료에 기기 관측 시각이 없어 현재 위치 정확도와 도착 후 대여 가능 여부는 보장되지 않습니다.</Text>}
