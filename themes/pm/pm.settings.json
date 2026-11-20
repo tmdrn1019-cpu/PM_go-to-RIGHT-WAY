@@ -4,16 +4,6 @@
   "mode": "both",
   "settings": [
     {
-      "thing": "neutral",
-      "value": "#1E3B34",
-      "source": "dial"
-    },
-    {
-      "thing": "accent",
-      "value": "#1E3B34",
-      "source": "dial"
-    },
-    {
       "thing": "--color-background-body",
       "value": "#F3ECE0",
       "source": "token"
@@ -34,21 +24,82 @@
       "source": "token"
     },
     {
-      "thing": "--color-on-accent",
-      "value": "#FBF7F0",
-      "source": "token"
+      "thing": "warning",
+      "value": "#FF9500",
+      "source": "dial"
     },
     {
-      "thing": "--color-text-accent",
-      "value": "#FF4A1A",
-      "source": "token"
+      "thing": "danger",
+      "value": "#FF2D2D",
+      "source": "dial"
     },
     {
-      "thing": "--color-icon-accent",
-      "value": "#FF4A1A",
-      "source": "token"
+      "thing": "--color-background-surface",
+      "value": "#FFFFFF",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-background-card",
+      "value": "#FFFFFF",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "corners",
+      "value": "round",
+      "source": "dial"
+    },
+    {
+      "thing": "headings",
+      "value": "heavy",
+      "source": "dial",
+      "axis": "weight"
+    },
+    {
+      "thing": "font",
+      "value": "rounded",
+      "source": "dial"
+    },
+    {
+      "thing": "neutral",
+      "value": "#1F6F5F",
+      "source": "dial"
+    },
+    {
+      "thing": "accent",
+      "value": "#2FA084",
+      "source": "dial"
+    },
+    {
+      "thing": "success",
+      "value": "#6FCF97",
+      "source": "dial"
+    },
+    {
+      "thing": "info",
+      "value": "#2FA084",
+      "source": "dial"
+    },
+    {
+      "thing": "--color-background-body",
+      "value": "#EEEEEE",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-text-primary",
+      "value": "#1F6F5F",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-background-muted",
+      "value": "#6FCF97",
+      "source": "token",
+      "mode": "light"
     }
   ],
   "lifted": [],
-  "palette": "6cf8a3dd984da80ba25ea088e63e525f69a318d6169c22e0a17be939ba0d2106"
+  "palette": "873596cb38af9e1c7ad8471f249b55320ea568db51c421d641b68ce147833c6c"
 }

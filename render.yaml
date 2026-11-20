@@ -1,0 +1,16 @@
+# Render blueprint. Upload data/public-zones.json, towing-areas.json, towing-geocodes.json, sdot-sensors.json as Secret Files (see README "외부 배포").
+services:
+  - type: web
+    name: pm-zones
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build && mkdir -p data && (cp /etc/secrets/*.json data/ 2>/dev/null || true)
+    startCommand: npm start
+    healthCheckPath: /api/service/state
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: HOST
+        value: 0.0.0.0
+      - key: DEMO_PUBLIC_HOST
+        sync: false

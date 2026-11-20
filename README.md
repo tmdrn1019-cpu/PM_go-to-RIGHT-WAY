@@ -36,7 +36,18 @@ npm start
 
 빌드 주소는 [http://127.0.0.1:3001](http://127.0.0.1:3001)입니다. `PORT` 환경변수로 포트를 변경할 수 있습니다. 종료는 실행 터미널의 `Ctrl+C`입니다.
 
-서버는 로컬 주소에 바인딩합니다. 실제 휴대폰에서는 PC의 localhost 주소에 접속할 수 없으므로, 실제 기기 검증에는 HTTPS 배포 주소 또는 승인된 HTTPS 개발 접근 환경이 필요합니다. 이번 변경에는 외부 배포가 포함되지 않습니다.
+서버는 로컬 주소에 바인딩합니다. 실제 휴대폰에서는 PC의 localhost 주소에 접속할 수 없으므로, 실제 기기 검증에는 HTTPS 배포 주소 또는 승인된 HTTPS 개발 접근 환경이 필요합니다. 외부 배포는 아래 "외부 배포"를 따릅니다.
+
+## 외부 배포
+
+`render.yaml`은 GitHub 저장소를 [Render](https://render.com) Node 웹 서비스로 배포하는 설정입니다. `data/`는 git에 올리지 않으므로 서버 실행에 필요한 가공 파일을 Render **Secret Files**로 따로 올립니다.
+
+1. Render에서 GitHub 저장소를 연결하고 **New → Blueprint**로 `render.yaml`을 선택합니다(배포할 브랜치를 고릅니다).
+2. 서비스의 **Environment → Secret Files**에 로컬 `data/`의 `public-zones.json`, `towing-areas.json`, `towing-geocodes.json`, `sdot-sensors.json`을 같은 이름으로 올립니다. 빌드가 `/etc/secrets/*.json`을 `data/`로 복사합니다.
+3. 첫 배포 주소(예: `pm-zones.onrender.com`)를 `DEMO_PUBLIC_HOST`에 넣고 다시 배포하면 `/mobile` 시연 API가 그 주소에서만 열립니다. 비워 두면 시연 API는 로컬 전용(403)입니다.
+4. 필요하면 `SEOUL_OPEN_DATA_KEY`, `TAGO_SERVICE_KEY` 등을 환경변수로 넣습니다. 키를 저장소에 넣지 않습니다.
+
+`HOST=0.0.0.0`은 배포 환경에서만 씁니다. 무료 플랜 디스크는 재시작 때 초기화되므로 시연 상태(`data/demo.sqlite`)도 처음으로 돌아갑니다. 시연 API는 인증 없이 누구나 쓸 수 있는 합성 자료 시연이며 실제 기기·계정과 연결되지 않습니다.
 
 ## 운영 데이터 연결
 

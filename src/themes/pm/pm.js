@@ -32,22 +32,22 @@ export const pmTheme = {
     "--font-size-4xl": "2.1875rem",
     "--font-size-5xl": "2.625rem",
     "--text-heading-1-size": "var(--font-size-2xl)",
-    "--text-heading-1-weight": "var(--font-weight-semibold)",
+    "--text-heading-1-weight": "800",
     "--text-heading-1-leading": "1.3333",
     "--text-heading-2-size": "var(--font-size-xl)",
-    "--text-heading-2-weight": "var(--font-weight-semibold)",
+    "--text-heading-2-weight": "800",
     "--text-heading-2-leading": "1.4",
     "--text-heading-3-size": "var(--font-size-lg)",
-    "--text-heading-3-weight": "var(--font-weight-bold)",
+    "--text-heading-3-weight": "800",
     "--text-heading-3-leading": "1.4118",
     "--text-heading-4-size": "var(--font-size-base)",
-    "--text-heading-4-weight": "var(--font-weight-bold)",
+    "--text-heading-4-weight": "800",
     "--text-heading-4-leading": "1.4286",
     "--text-heading-5-size": "var(--font-size-sm)",
-    "--text-heading-5-weight": "var(--font-weight-semibold)",
+    "--text-heading-5-weight": "800",
     "--text-heading-5-leading": "1.6667",
     "--text-heading-6-size": "var(--font-size-xs)",
-    "--text-heading-6-weight": "var(--font-weight-semibold)",
+    "--text-heading-6-weight": "800",
     "--text-heading-6-leading": "1.6",
     "--text-body-size": "var(--font-size-base)",
     "--text-body-weight": "var(--font-weight-normal)",
@@ -65,13 +65,13 @@ export const pmTheme = {
     "--text-supporting-weight": "var(--font-weight-normal)",
     "--text-supporting-leading": "1.6667",
     "--text-display-1-size": "var(--font-size-5xl)",
-    "--text-display-1-weight": "var(--font-weight-normal)",
+    "--text-display-1-weight": "800",
     "--text-display-1-leading": "1.2381",
     "--text-display-2-size": "var(--font-size-4xl)",
-    "--text-display-2-weight": "var(--font-weight-normal)",
+    "--text-display-2-weight": "800",
     "--text-display-2-leading": "1.2571",
     "--text-display-3-size": "var(--font-size-3xl)",
-    "--text-display-3-weight": "var(--font-weight-normal)",
+    "--text-display-3-weight": "800",
     "--text-display-3-leading": "1.3793",
     "--duration-fast-min": "95ms",
     "--duration-fast": "125ms",
@@ -92,8 +92,8 @@ export const pmTheme = {
     "--_astryx-pre-tempo-duration-slow": "700ms",
     "--_astryx-pre-tempo-duration-slow-max": "935ms",
     "--_astryx-motion-tempo": "1",
-    "--font-family-body": "Figtree, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif",
-    "--font-family-heading": "Figtree, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif",
+    "--font-family-body": "Nunito, \"Varela Round\", system-ui, sans-serif",
+    "--font-family-heading": "Nunito, \"Varela Round\", system-ui, sans-serif",
     "--font-family-code": "ui-monospace, \"SF Mono\", Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace",
     "--color-syntax-keyword": "light-dark(#6b187c, #efa8ff)",
     "--color-syntax-string": "light-dark(#0b5615, #a4d6a3)",
@@ -114,51 +114,51 @@ export const pmTheme = {
     "--color-syntax-diff-header": "transparent",
     "--color-syntax-added-marker": "var(--color-syntax-punctuation)",
     "--color-syntax-removed-marker": "var(--color-syntax-punctuation)",
-    "--color-background-surface": "#FBF7F0",
-    "--color-background-body": "#F3ECE0",
-    "--color-background-card": "#FBF7F0",
+    "--color-background-surface": "light-dark(#FFFFFF, #FBF7F0)",
+    "--color-background-body": "light-dark(#EEEEEE, #F3ECE0)",
+    "--color-background-card": "light-dark(#FFFFFF, #FBF7F0)",
     "--color-background-popover": "light-dark(#ffffff, #ffffff)",
-    "--color-background-muted": "light-dark(#ebf3f0, #ecf3f0)",
-    "--color-accent": "light-dark(#1e3b34, #1e3b34)",
-    "--color-accent-muted": "light-dark(#b0e0d3, #b6dfd3)",
+    "--color-background-muted": "light-dark(#6FCF97, #e6f5f0)",
+    "--color-accent": "light-dark(#2fa084, #30977d)",
+    "--color-accent-muted": "light-dark(#a6e4d0, #aee2d0)",
     "--color-neutral": "light-dark(#0000000F, #ffffff1A)",
     "--color-overlay": "light-dark(#00000080, #000000CC)",
     "--color-overlay-hover": "light-dark(#0000000d, #0000000d)",
     "--color-overlay-pressed": "light-dark(#0000001a, #0000001a)",
-    "--color-text-primary": "#1E3B34",
-    "--color-text-secondary": "light-dark(#345049, #355049)",
-    "--color-text-disabled": "light-dark(#7e9790, #819690)",
-    "--color-text-accent": "#FF4A1A",
+    "--color-text-primary": "light-dark(#1F6F5F, #1E3B34)",
+    "--color-text-secondary": "light-dark(#0b5447, #125447)",
+    "--color-text-disabled": "light-dark(#649f90, #6a9d90)",
+    "--color-text-accent": "light-dark(#00614d, #00614d)",
     "--color-on-dark": "#ffffff",
     "--color-on-light": "#111111",
-    "--color-on-accent": "#FBF7F0",
-    "--color-on-success": "light-dark(#ffffff, #111111)",
-    "--color-on-error": "light-dark(#ffffff, #111111)",
-    "--color-on-warning": "#111111",
-    "--color-info": "light-dark(#0074e2, #6d9cfe)",
-    "--color-info-muted": "light-dark(#b9d7ff, #88bcff3D)",
-    "--color-on-info": "light-dark(#ffffff, #111111)",
-    "--color-text-info": "light-dark(#0067ce, #a1caff)",
-    "--color-text-success": "light-dark(#2f7d33, #90ca90)",
-    "--color-text-warning": "light-dark(#836700, #eec448)",
-    "--color-text-error": "light-dark(#c0262c, #ffaea7)",
-    "--color-on-info-muted": "light-dark(#003978, #a1caff)",
-    "--color-on-success-muted": "light-dark(#00490b, #90ca90)",
-    "--color-on-warning-muted": "light-dark(#4b3900, #eec448)",
-    "--color-on-error-muted": "light-dark(#76000c, #ffaea7)",
-    "--color-icon-accent": "#FF4A1A",
+    "--color-on-accent": "light-dark(#001610, #031511)",
+    "--color-on-success": "light-dark(#001610, #031511)",
+    "--color-on-error": "light-dark(#001610, #031511)",
+    "--color-on-warning": "light-dark(#001610, #031511)",
+    "--color-info": "light-dark(#2fa084, #30977d)",
+    "--color-info-muted": "light-dark(#a6e4d0, #aee2d0)",
+    "--color-on-info": "light-dark(#001610, #031511)",
+    "--color-text-info": "light-dark(#00614d, #00614d)",
+    "--color-text-success": "light-dark(#006339, #0b623a)",
+    "--color-text-warning": "light-dark(#8d4b00, #7d4000)",
+    "--color-text-error": "light-dark(#b3000e, #ab1f1d)",
+    "--color-on-info-muted": "light-dark(#004738, #004738)",
+    "--color-on-success-muted": "light-dark(#004828, #004828)",
+    "--color-on-warning-muted": "light-dark(#5d2c00, #5d2c00)",
+    "--color-on-error-muted": "light-dark(#760004, #760004)",
+    "--color-icon-accent": "light-dark(#00614d, #00614d)",
     "--color-icon-primary": "light-dark(#000000, #000000)",
-    "--color-icon-secondary": "light-dark(#58716a, #5b706a)",
-    "--color-icon-disabled": "light-dark(#7e9790, #819690)",
-    "--color-success": "light-dark(#198100, #64af4c)",
-    "--color-warning": "#ffce2f",
-    "--color-error": "light-dark(#c9303a, #ff705d)",
-    "--color-success-muted": "light-dark(#bce0bb, #90ca903D)",
-    "--color-error-muted": "light-dark(#ffc4be, #ff98903D)",
-    "--color-warning-muted": "light-dark(#fae19e, #e2b6233D)",
+    "--color-icon-secondary": "light-dark(#2f7c6b, #317b6c)",
+    "--color-icon-disabled": "light-dark(#649f90, #6a9d90)",
+    "--color-success": "light-dark(#6fcf97, #479769)",
+    "--color-warning": "light-dark(#ff9500, #be6d00)",
+    "--color-error": "light-dark(#ff2d2d, #ff2d2d)",
+    "--color-success-muted": "light-dark(#a4e5bd, #b5e1c4)",
+    "--color-error-muted": "light-dark(#ffc4bc, #ffc4bc)",
+    "--color-warning-muted": "light-dark(#ffcc9f, #ffc898)",
     "--color-border": "light-dark(#00000014, #00000014)",
-    "--color-border-emphasized": "light-dark(#cbd8d4, #ccd7d4)",
-    "--color-skeleton": "light-dark(#ebf3f0, #ecf3f0)",
+    "--color-border-emphasized": "light-dark(#bfdcd4, #c2dbd4)",
+    "--color-skeleton": "light-dark(#e4f5f0, #e6f5f0)",
     "--color-shadow": "light-dark(#0000001A, #0000004D)",
     "--color-tint-hover": "light-dark(#000000, #ffffff)",
     "--color-background-red": "light-dark(#ffc4be, #5b2b28)",
@@ -202,10 +202,10 @@ export const pmTheme = {
     "--color-icon-gray": "light-dark(#474747, #9e9e9e)",
     "--color-text-gray": "light-dark(#1b1b1b, #d4d4d4)",
     "--radius-none": "0px",
-    "--radius-inner": "0.375rem",
-    "--radius-element": "0.625rem",
-    "--radius-container": "0.75rem",
-    "--radius-page": "1.75rem",
+    "--radius-inner": "10px",
+    "--radius-element": "16px",
+    "--radius-container": "19px",
+    "--radius-page": "45px",
     "--radius-full": "9999px",
     "--shadow-low": "0 2px 4px light-dark(oklch(0 0 0 / 5%), oklch(0 0 0 / 25%)), 0 4px 8px light-dark(oklch(0 0 0 / 10%), oklch(0 0 0 / 40%)), inset 0 0 0 1px light-dark(transparent, oklch(1 0 0 / 8%))",
     "--shadow-med": "0 2px 4px light-dark(oklch(0 0 0 / 5%), oklch(0 0 0 / 35%)), 0 4px 12px light-dark(oklch(0 0 0 / 10%), oklch(0 0 0 / 50%)), inset 0 0 0 1px light-dark(transparent, oklch(1 0 0 / 12%))",
@@ -215,7 +215,15 @@ export const pmTheme = {
     "--shadow-inset-success": "inset 0px 0px 0px 2px #2f7d334D",
     "--shadow-inset-warning": "inset 0px 0px 0px 2px #f8d36a4D",
     "--shadow-inset-error": "inset 0px 0px 0px 2px #de47454D",
-    "--focus-outline-color": "light-dark(#1e3b34, #1e3b34)"
+    "--focus-outline-color": "light-dark(#199378, #30977d)",
+    "--color-icon-success": "light-dark(#006339, #0b623a)",
+    "--color-border-success": "light-dark(#88daa9, #a1d5b4)",
+    "--color-icon-warning": "light-dark(#8d4b00, #7d4000)",
+    "--color-border-warning": "light-dark(#ffbb7e, #ffb46f)",
+    "--color-icon-error": "light-dark(#b3000e, #ab1f1d)",
+    "--color-border-error": "light-dark(#ffaea3, #ffaea3)",
+    "--color-icon-info": "light-dark(#00614d, #00614d)",
+    "--color-border-info": "light-dark(#8ed7c0, #98d6c2)"
   },
   localTokens: {
     "--astryx-theme-neutral-color-status-fill-accent": "light-dark(#0074e2, #6d9cfe)"
@@ -322,22 +330,22 @@ export const pmTheme = {
     },
     "item": {
       "selected": {
-        "--color-text-secondary": "light-dark(#345049, #425a54)"
+        "--color-text-secondary": "light-dark(#0b5447, #156154)"
       }
     },
     "tree-list-item": {
       "selected": {
-        "--color-text-secondary": "light-dark(#345049, #425a54)"
+        "--color-text-secondary": "light-dark(#0b5447, #156154)"
       }
     },
     "file-input": {
       "mode:dropzone": {
-        "--color-text-secondary": "light-dark(#345049, #425a54)"
+        "--color-text-secondary": "light-dark(#0b5447, #156154)"
       }
     },
     "citation": {
       "variant:number": {
-        "--color-text-secondary": "light-dark(#345049, #425a54)"
+        "--color-text-secondary": "light-dark(#0b5447, #156154)"
       }
     },
     "button": {
@@ -399,7 +407,7 @@ export const pmTheme = {
     },
     "segmented-control-item": {
       "base": {
-        "--color-text-secondary": "light-dark(#345049, #4e645e)"
+        "--color-text-secondary": "light-dark(#0b5447, #1f6f5f)"
       },
       "size:sm": {
         "height": "calc(var(--size-element-sm) - 8px)"
@@ -475,6 +483,27 @@ export const pmTheme = {
             }
           }
         }
+      },
+      {
+        "when": {
+          "pointer": "coarse",
+          "width": {
+            "below": "lg"
+          }
+        },
+        "value": {
+          "tokens": {
+            "--text-heading-1-weight": "800",
+            "--text-heading-2-weight": "800",
+            "--text-heading-3-weight": "800",
+            "--text-heading-4-weight": "800",
+            "--text-heading-5-weight": "800",
+            "--text-heading-6-weight": "800",
+            "--text-display-1-weight": "800",
+            "--text-display-2-weight": "800",
+            "--text-display-3-weight": "800"
+          }
+        }
       }
     ]
   },
@@ -485,12 +514,12 @@ export const pmTheme = {
         "ratio": 1.2
       },
       "body": {
-        "family": "Figtree",
-        "fallbacks": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif"
+        "family": "Nunito",
+        "fallbacks": "\"Varela Round\", system-ui, sans-serif"
       },
       "heading": {
-        "family": "Figtree",
-        "fallbacks": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif",
+        "family": "Nunito",
+        "fallbacks": "\"Varela Round\", system-ui, sans-serif",
         "weights": {
           "3": "bold",
           "4": "bold"
