@@ -21,4 +21,5 @@ test('모든 레이어를 끄면 목록도 비고 기본 필터는 모두 보여
 test('모바일 선택 지점은 펼친 패널 위에 남는 지도 중앙에 둔다', () => {
   assert.ok(Math.abs(visibleMapCenterY(800, 0.55) - 180) < 1e-9);
   assert.equal(visibleMapCenterY(800, 0), 400);
+  assert.equal(visibleMapCenterY(800, 0.35, 200), 360);
 });

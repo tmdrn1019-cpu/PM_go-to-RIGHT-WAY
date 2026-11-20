@@ -1,6 +1,7 @@
 import { distanceM } from '../server/engine.mjs';
 
-export function visibleMapCenterY(height, bottomFraction) { return height * (1 - bottomFraction) / 2; }
+// Middle of the map strip left between top overlays (topInset px) and the bottom panel.
+export function visibleMapCenterY(height, bottomFraction, topInset = 0) { return (topInset + height * (1 - bottomFraction)) / 2; }
 
 export function filterZones(zones, { query = '', vehicleType = 'all', statuses, bounds, origin } = {}) {
   const search = query.trim().toLocaleLowerCase('ko-KR');
