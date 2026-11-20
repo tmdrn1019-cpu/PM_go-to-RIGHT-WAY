@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { demoZones, demoPolicy, demoTowingAreas, towingRules, demoDesignated } from './fixtures.mjs';
+import { demoZones, demoPolicy, demoTowingAreas, towingRules, demoDesignated, demoTowingSpots } from './fixtures.mjs';
 import { evaluateZone, nextScheduledChange, LOS_REFERENCE, distanceM, distanceToRouteM, koreaDay } from './engine.mjs';
 
 const active = (mission) => ['moving', 'verifying'].includes(mission.status);
@@ -70,7 +70,7 @@ export function snapshot(state) {
   const todayCount = state.missions.filter((m) => koreaDay(m.acceptedAt) === koreaDay(state.now)).length;
   const scooters = state.scooters.map((s) => { const area = !s.resolved && s.point && towingAreaAt(s.point); const reason = area ? reasonFor(area, s.id) : null;
     return { ...s, towingArea: area ? area.name : null, towingReason: reason, towingKind: reason ? towingRules[reason].kind : null }; });
-  return { ...state, scooters, zones: zonesAt(state), offers, towingAreas: demoTowingAreas, todayCount, operatorHandoffs: state.scooters.filter((s) => s.needsOperator).length, mode: 'demo' };
+  return { ...state, scooters, zones: zonesAt(state), offers, towingAreas: demoTowingAreas, designated: demoDesignated, towingSpots: demoTowingSpots, todayCount, operatorHandoffs: state.scooters.filter((s) => s.needsOperator).length, mode: 'demo' };
 }
 
 function validPosition(state, position) {

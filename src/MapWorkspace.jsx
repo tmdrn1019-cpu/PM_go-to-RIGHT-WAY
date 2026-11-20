@@ -1,5 +1,5 @@
 // Astryx shell-side-nav frame adapted into a map workspace with a mobile bottom panel.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@astryxdesign/core/AppShell';
 import { TopNav } from '@astryxdesign/core/TopNav';
 import { VStack, HStack } from '@astryxdesign/core/Layout';
@@ -18,6 +18,8 @@ import PublicDataPanel from './PublicDataPanel';
 import ExternalDataPanel from './ExternalDataPanel';
 
 const statuses = { open: '개방', reduced: '축소 운영', closed: '폐쇄', unknown: '확인 중' };
+// Badge each P sign carries on the map, so the legend matches shapes, not only colours.
+const signs = { open: '', reduced: '↓', closed: '×', unknown: '?' };
 const colors = { open: 'var(--color-text-success)', reduced: 'var(--color-text-warning)', closed: 'var(--color-text-error)', unknown: 'var(--color-text-secondary)' };
 const types = { scooter: '킥보드', ebike: '전기자전거' };
 const formatTime = (value) => value ? new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(value)) : '—';
@@ -98,7 +100,9 @@ export default function MapWorkspace() {
   const overlay = !['fleet', 'towing'].includes(view);
   const riskVehicles = (synthetic?.vehicles ?? []).filter((v) => v.risk).sort((a, b) => a.risk.distanceM - b.risk.distanceM || a.id.localeCompare(b.id));
   // Phones have no bottom legend (the panel covers it), so the extra layers' key also sits in the bottom panel header there.
-  const legend = overlay && <HStack gap={3} wrap="wrap"><Text type="label" color="secondary">■ 지정 구역(상태 없음)</Text><Text type="label">● 합성 PM</Text><Text type="label" style={{ color: colors.closed }}>◉ 견인 위험(합성)</Text></HStack>;
+  const legend = overlay && <HStack gap={3} wrap="wrap"><Text type="label" color="secondary">P 지정 구역(상태 없음)</Text><Text type="label">핀 합성 PM</Text><Text type="label" style={{ color: colors.closed }}>핀! 견인 위험(합성)</Text><Text type="label" style={{ color: colors.closed }}>빨간 면 견인 다발 {synthetic?.riskRadiusM ?? 30}m(가정)</Text></HStack>;
+  // Real 2025 towing addresses drawn as red areas; the radius is the same assumption as the risk check, not a legal boundary.
+  const hotspotAreas = useMemo(() => (synthetic?.hotspots ?? []).map((h) => ({ point: h.point, radiusM: synthetic.riskRadiusM, label: `${h.address} · 2025 견인 ${h.count}건 · 반경 ${synthetic.riskRadiusM}m 가정(금지 경계 아님)` })), [synthetic]);
   const syntheticMarkers =(synthetic?.vehicles ?? []).map((v) => ({ id: v.id, point: v.point, alert: Boolean(v.risk), label: v.risk ? `합성 ${v.id} · 견인 위험 · ${v.risk.address}에서 ${v.risk.distanceM}m (실제 기기 아님)` : `합성 ${v.id} · 견인 주소 ${synthetic.riskRadiusM}m 밖 (실제 기기 아님)` }));
   const onBoundsChange = useCallback((next) => setBounds(next), []);
   const select = useCallback((id) => { setSelectedId(id); setFocus(null); setView('zones'); setExpanded(true); }, []);
@@ -148,13 +152,13 @@ export default function MapWorkspace() {
     <HStack height="100%" gap={0} style={{ minHeight: 0, position: 'relative', overflow: 'hidden' }}>
       {!mobile && <VStack as="aside" width="24rem" height="100%" gap={0} style={{ flexShrink: 0, borderInlineEnd: 'var(--border-width) solid var(--color-border)', background: 'var(--color-background-surface)' }} aria-label="주차존 탐색 패널"><HStack padding={5} hAlign="between" vAlign="center" gap={2}><Heading level={3} accessibilityLevel={1}>{panelTitle}</Heading>{nav}</HStack><Divider /><VStack key={selected?.id ?? view} padding={5} gap={4} isScrollable style={{ flex: 1, minHeight: 0 }}>{body}</VStack></VStack>}
       <VStack height="100%" style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
-        <ZoneMap zones={mapZones} vehicles={overlay ? [...vehicles, ...syntheticMarkers] : vehicles} designated={overlay ? data?.designated ?? [] : []} towingAreas={towingAreas} selectedId={selectedId} onSelect={select} onBoundsChange={onBoundsChange} focus={focus} position={position} bottomFraction={bottomFraction} topInset={mobile ? 200 : 0} />
+        <ZoneMap zones={mapZones} areas={overlay ? hotspotAreas : []} vehicles={overlay ? [...vehicles, ...syntheticMarkers] : vehicles} designated={overlay ? data?.designated ?? [] : []} towingAreas={towingAreas} selectedId={selectedId} onSelect={select} onBoundsChange={onBoundsChange} focus={focus} position={position} bottomFraction={bottomFraction} topInset={mobile ? 200 : 0} />
         <VStack gap={2} style={{ position: 'absolute', top: 'var(--spacing-4)', left: 'var(--spacing-4)', zIndex: 2, maxWidth: mobile ? 'calc(100% - 5rem)' : '24rem' }}>
           <VStack padding={3} gap={1} style={surface}>{view === 'fleet' ? <Text type="label">PM 위치 · TAGO</Text> : view === 'towing' ? <><Text type="label">견인 이력 · 주소별 분석</Text><Text type="supporting">원의 크기 = 견인 건수 · 주소 대표점</Text></> : clockControls}</VStack>
           {/* Solid card: the secondary buttons are translucent and dense markers showed through their labels. */}
           {!(mobile && selected) && <HStack gap={2} wrap="wrap" padding={2} style={{ ...surface, alignSelf: 'flex-start' }}><Button label={locating ? '위치 확인 중' : '내 위치'} isLoading={locating} onClick={() => setLocationConsent(true)} /><Button label="전체 존" onClick={() => setFocus({ points: zones.map((zone) => zone.point) })} /></HStack>}          {locationStatus && <VStack padding={3} style={surface}><Text role="status">{locationStatus}</Text><Button label="위치 안내 닫기" size="sm" variant="ghost" onClick={() => setLocationStatus('')} /></VStack>}
         </VStack>
-        {!mobile && <VStack padding={3} style={{ ...surface, position: 'absolute', bottom: 'var(--spacing-5)', left: 'var(--spacing-5)', zIndex: 2, maxWidth: 'calc(100% - 2 * var(--spacing-5))' }}><HStack gap={4} wrap="wrap">{view === 'towing' && <Text type="label">견인 건수별 주소 위치 · 금지 경계 아님</Text>}{(view === 'towing' ? [] : Object.keys(statuses)).map((status) => <Text key={status} type="label" style={{ color: colors[status] }}>{statuses[status]}</Text>)}{legend}</HStack></VStack>}
+        {!mobile && <VStack padding={3} style={{ ...surface, position: 'absolute', bottom: 'var(--spacing-5)', left: 'var(--spacing-5)', zIndex: 2, maxWidth: 'calc(100% - 2 * var(--spacing-5))' }}><HStack gap={4} wrap="wrap">{view === 'towing' && <Text type="label">견인 건수별 주소 위치 · 금지 경계 아님</Text>}{(view === 'towing' ? [] : Object.keys(statuses)).map((status) => <Text key={status} type="label" style={{ color: colors[status] }}>P{signs[status]} {statuses[status]}</Text>)}{legend}</HStack></VStack>}
       </VStack>
       {mobile && <VStack as="aside" aria-label="시민용 탐색 패널" gap={0} style={{ ...surface, position: 'absolute', insetInline: 0, bottom: 0, zIndex: 3, maxHeight: `${bottomFraction * 100}%`, paddingBottom: 'env(safe-area-inset-bottom)', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}>
         <VStack padding={3} gap={2}><HStack hAlign="between" vAlign="center" gap={2}><Heading level={3} accessibilityLevel={1}>{panelTitle}</Heading><Button label={expanded ? '줄이기' : '펼치기'} size="sm" variant="ghost" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)} /></HStack>{nav}{!selected && legend}</VStack>

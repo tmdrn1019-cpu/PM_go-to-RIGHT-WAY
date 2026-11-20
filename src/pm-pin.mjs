@@ -12,3 +12,20 @@ ${alert ? '<circle cx="30" cy="5" r="6" fill="var(--color-error)" stroke="white"
 </svg>`;
   return { svg, width, height };
 }
+
+// Parking zone sign: a "P" panel on a short post. Status is a badge shape (none / ↓ / × / ?) plus colour, never colour alone.
+const BADGES = { reduced: ['var(--color-warning)', '<path d="M27 2.5v5M24.6 5.6 27 8l2.4-2.4" stroke="white" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'],
+  closed: ['var(--color-error)', '<path d="M25 3l4 4M29 3l-4 4" stroke="white" stroke-width="1.8" stroke-linecap="round"/>'],
+  unknown: ['var(--color-text-secondary)', '<text x="27" y="8.2" font-size="7" font-weight="700" text-anchor="middle" fill="white" font-family="sans-serif">?</text>'] };
+export function parkingSign({ status = null, picked = false, muted = false } = {}) {
+  const width = picked ? 38 : muted ? 22 : 28; const height = Math.round(width * 40 / 30);
+  const panel = muted ? 'var(--color-text-secondary)' : 'var(--color-text-primary)';
+  const badge = BADGES[status];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 40" width="${width}" height="${height}" aria-hidden="true" style="display:block;overflow:visible;filter:drop-shadow(0 1px 2px rgb(0 0 0 / 0.3))">
+<rect x="13.5" y="26" width="3" height="13" fill="${panel}"/><rect x="11" y="37" width="8" height="3" rx="1" fill="${panel}"/>
+<rect x="2" y="2" width="26" height="26" rx="3" fill="${panel}" stroke="var(--color-background-surface)" stroke-width="1.5"/>
+<text x="15" y="22" font-size="19" font-weight="800" text-anchor="middle" fill="var(--color-background-surface)" font-family="sans-serif">P</text>
+${badge ? `<circle cx="27" cy="5" r="6" fill="${badge[0]}" stroke="white" stroke-width="1.5"/>${badge[1]}` : ''}
+</svg>`;
+  return { svg, width, height };
+}
