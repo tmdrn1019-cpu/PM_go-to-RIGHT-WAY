@@ -9,13 +9,38 @@ export const demoZones = [
   { id: 'z6', name: '봉천동 100-27 옆 골목', area: '봉천동', point: [37.4824, 126.9594], type: '유효폭 부족 사례', layouts: [{ capacity: 4, effectiveWidthM: 1.8 }], pedestrianCount15Min: 500, windows: [] },
 ];
 
-// exitMarginM: demo assumption for how far past a towing area edge the scooter is left.
-export const demoPolicy = { exitMarginM: 10, dailyLimit: 3, recentMoveMinutes: 120, reward: 1500, deadlineMinutes: 20, corridorM: 50, accuracyM: 30, positionAgeSeconds: 120, arrivalRadiusM: 20 };
+// exitMarginM: demo assumption for how far past the required distance the scooter is left. walkMPerMin: assumed walking pace while dragging.
+export const demoPolicy = { exitMarginM: 10, dailyLimit: 3, recentMoveMinutes: 120, reward: 1500, deadlineMinutes: 20, corridorM: 50, accuracyM: 30, positionAgeSeconds: 120, arrivalRadiusM: 20, walkMPerMin: 50 };
 
 // Demo towing areas: real 2025 hotspot points with an assumed 30m radius. Not legal no-parking boundaries.
+// types: real 2025 towing counts by reason at that address (data/towing-areas.json, 서울시 OA-23057).
 export const demoTowingAreas = [
-  { id: 'A', name: '신림동 1467-13 견인 구역', point: [37.48395, 126.9266], radiusM: 30 },
-  { id: 'B', name: '봉천동 1693-13 견인 구역', point: [37.47888, 126.94079], radiusM: 30 },
-  { id: 'C', name: '봉천동 1693-14 견인 구역', point: [37.47907, 126.9485], radiusM: 30 },
-  { id: 'D', name: '봉천동 100-27 견인 구역', point: [37.48236, 126.95945], radiusM: 30 },
+  { id: 'A', name: '신림동 1467-13 견인 구역', point: [37.48395, 126.9266], radiusM: 30, types: { '교통섬 내부': 36, '횡단보도 주변(3m)': 15, '상기 사항 외 보도': 2, '점자블록 또는 교통약자 엘리베이터': 1 } },
+  { id: 'B', name: '봉천동 1693-13 견인 구역', point: [37.47888, 126.94079], radiusM: 30, types: { '보호구역(어린이·노인·장애인)': 36, '횡단보도 주변(3m)': 13, '보도와 차도가 구분된 도로의 차도': 7, '점자블록 또는 교통약자 엘리베이터': 2, '버스정류소 및 택시승강장 주변(5m 이내)': 2 } },
+  { id: 'C', name: '봉천동 1693-14 견인 구역', point: [37.47907, 126.9485], radiusM: 30, types: { '보호구역(어린이·노인·장애인)': 25, '횡단보도 주변(3m)': 23, '점자블록 또는 교통약자 엘리베이터': 5, '보도와 차도가 구분된 도로의 차도': 1 } },
+  { id: 'D', name: '봉천동 100-27 견인 구역', point: [37.48236, 126.95945], radiusM: 30, types: { '보호구역(어린이·노인·장애인)': 65, '보도와 차도가 구분된 도로의 차도': 3 } },
+];
+
+// What moving a scooter means for each real towing reason. clear: walk it more than clearM away from where it stood.
+// The 3m/5m distances are the reason's own wording; assumed: true marks demo guesses (no road/sidewalk geometry).
+// protected: no boundary data, so the citizen option is the nearest designated PM parking; grace: not an immediate-tow reason.
+export const towingRules = {
+  '횡단보도 주변(3m)': { kind: 'clear', clearM: 3, guide: '횡단보도에서 3m 넘게 떨어진 보도로 옮겨 주세요.' },
+  '버스정류소 및 택시승강장 주변(5m 이내)': { kind: 'clear', clearM: 5, guide: '정류소·승강장에서 5m 넘게 떨어진 곳으로 옮겨 주세요.' },
+  '지하철역 전면(5m이내)': { kind: 'clear', clearM: 5, guide: '지하철역 출입구 앞에서 5m 넘게 떨어진 곳으로 옮겨 주세요.' },
+  '보도와 차도가 구분된 도로의 차도': { kind: 'clear', clearM: 5, assumed: true, guide: '차도에서 보도 안쪽으로 옮겨 주세요.' },
+  '자전거 도로': { kind: 'clear', clearM: 5, assumed: true, guide: '자전거도로에서 보도 안쪽으로 옮겨 주세요.' },
+  '교통섬 내부': { kind: 'clear', clearM: 5, assumed: true, guide: '교통섬 밖 보도로 옮겨 주세요. 횡단보도 신호를 지켜 건너 주세요.' },
+  '점자블록 또는 교통약자 엘리베이터': { kind: 'clear', clearM: 3, assumed: true, guide: '점자블록·엘리베이터 앞을 비우고 옆 보도로 옮겨 주세요.' },
+  '보호구역(어린이·노인·장애인)': { kind: 'protected', guide: '보호구역 안이라 가까운 지정 PM 주차구역으로 옮겨 주세요.' },
+  '상기 사항 외 보도': { kind: 'grace' },
+  '그 외 지역': { kind: 'grace' },
+};
+
+// Real 서울시 지정 PM 주차구역 nearest to the demo hotspots (copied from data/public-zones.json `designated`). No capacity data.
+export const demoDesignated = [
+  { id: 'pk-171', name: '서울대입구역 4번 출구 인근', point: [37.48113529746553, 126.95132864045641] },
+  { id: 'pk-172', name: '서울대입구역 5번 출구 인근', point: [37.48178146393465, 126.95083877566566] },
+  { id: 'pk-173', name: '낙성대입구 교차로 인근', point: [37.47810543215296, 126.96010042371994] },
+  { id: 'pk-175', name: '봉천역 3번 출구 인근', point: [37.482748996992946, 126.93985201546155] },
 ];

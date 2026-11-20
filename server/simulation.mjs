@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { demoZones, demoPolicy, demoTowingAreas } from './fixtures.mjs';
+import { demoZones, demoPolicy, demoTowingAreas, towingRules, demoDesignated } from './fixtures.mjs';
 import { evaluateZone, nextScheduledChange, LOS_REFERENCE, distanceM, distanceToRouteM, koreaDay } from './engine.mjs';
 
 const active = (mission) => ['moving', 'verifying'].includes(mission.status);
@@ -9,14 +9,20 @@ const timestamp = (at) => new Date(at).getTime();
 const spread = ([lat, lng], i) => { const m = 4 + (i % 4) * 4; const a = i * 2.39996; return [lat + m * Math.cos(a) / 111_195, lng + m * Math.sin(a) / (111_195 * Math.cos(lat * Math.PI / 180))]; };
 const square = ([lat, lng], d = 0.00012) => [[lat - d, lng - d], [lat + d, lng - d], [lat + d, lng + d], [lat - d, lng + d], [lat - d, lng - d]];
 const towingAreaAt = (point) => demoTowingAreas.find((area) => distanceM(point, area.point) <= area.radiusM);
-// Shortest way out: straight from the area's center through the start point, to the edge plus a margin.
-export function exitPoint(area, from, marginM) {
-  const scaleY = 111_195; const scaleX = scaleY * Math.cos(area.point[0] * Math.PI / 180);
-  let dx = (from[1] - area.point[1]) * scaleX; let dy = (from[0] - area.point[0]) * scaleY;
+// Walk `distM` further from `from`, straight away from the hotspot center (the real road geometry is not known).
+export function awayPoint(center, from, distM) {
+  const scaleY = 111_195; const scaleX = scaleY * Math.cos(center[0] * Math.PI / 180);
+  let dx = (from[1] - center[1]) * scaleX; let dy = (from[0] - center[0]) * scaleY;
   const length = Math.hypot(dx, dy); if (length < 0.5) { dx = 0; dy = 1; } else { dx /= length; dy /= length; }
-  const reach = area.radiusM + marginM;
-  return [area.point[0] + dy * reach / scaleY, area.point[1] + dx * reach / scaleX];
+  return [from[0] + dy * distM / scaleY, from[1] + dx * distM / scaleX];
 }
+// Each scooter at a hotspot gets one real towing reason, picked deterministically in proportion to that address's counts.
+export function reasonFor(area, scooterId) {
+  const entries = Object.entries(area.types); const total = entries.reduce((n, [, c]) => n + c, 0);
+  let u = (Number(scooterId.replace(/\D/g, '')) * 2654435761 >>> 0) % total;
+  for (const [reason, count] of entries) { if (u < count) return reason; u -= count; }
+}
+const nearestDesignated = (point) => demoDesignated.map((z) => ({ ...z, distanceM: distanceM(point, z.point) })).sort((a, b) => a.distanceM - b.distanceM)[0];
 
 export function createDemo(at = '2026-11-19T17:30:00+09:00') {
   requireValue(typeof at === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/.test(at) && Number.isFinite(timestamp(at)), '시연 시각이 올바르지 않습니다.', 400);
@@ -48,14 +54,22 @@ export function zonesAt(state, at = state.now) {
 export function snapshot(state) {
   const free = (scooter) => !state.missions.some((m) => active(m) && m.scooterId === scooter.id) &&
     (!scooter.lastMovedAt || timestamp(state.now) - timestamp(scooter.lastMovedAt) >= state.policy.recentMoveMinutes * 60_000);
-  // User rule: any scooter inside a towing area may be walked just outside it, unless a failed mission already handed it to the operator.
-  const offers = state.scooters.filter((s) => s.point && towingAreaAt(s.point) && !s.handoff && free(s)).map((scooter) => {
-    const area = towingAreaAt(scooter.point);
-    const point = exitPoint(area, scooter.point, state.policy.exitMarginM ?? demoPolicy.exitMarginM);
-    return { ...scooter, originName: area.name, destinations: [{ id: 'exit', name: `${area.name} 밖`, distanceM: Math.round(distanceM(scooter.point, point)), towingAreaId: area.id, point }] };
+  // User rule: a scooter at a towing hotspot is moved as its real towing reason requires, unless it was already resolved or handed to the operator.
+  const offers = state.scooters.filter((s) => s.point && towingAreaAt(s.point) && !s.handoff && !s.resolved && free(s)).flatMap((scooter) => {
+    const area = towingAreaAt(scooter.point); const reason = reasonFor(area, scooter.id); const rule = towingRules[reason];
+    if (rule.kind === 'grace') return [];
+    const base = { ...scooter, originName: area.name, reason, rule };
+    if (rule.kind === 'clear') {
+      const point = awayPoint(area.point, scooter.point, rule.clearM + (state.policy.exitMarginM ?? demoPolicy.exitMarginM));
+      return [{ ...base, destinations: [{ id: 'exit', name: `${reason} ${rule.clearM}m 밖`, distanceM: Math.round(distanceM(scooter.point, point)), towingAreaId: area.id, point }] }];
+    }
+    // Protected area: operator pickup by default; a citizen may still walk it to the nearest designated parking.
+    const zone = nearestDesignated(scooter.point);
+    return [{ ...base, operatorPickup: true, destinations: [{ id: zone.id, name: `지정 PM 주차구역 ${zone.name}`, designated: true, distanceM: Math.round(zone.distanceM), towingAreaId: area.id, point: zone.point }] }];
   });
   const todayCount = state.missions.filter((m) => koreaDay(m.acceptedAt) === koreaDay(state.now)).length;
-  const scooters = state.scooters.map((s) => ({ ...s, towingArea: (s.point && towingAreaAt(s.point))?.name ?? null }));
+  const scooters = state.scooters.map((s) => { const area = !s.resolved && s.point && towingAreaAt(s.point); const reason = area ? reasonFor(area, s.id) : null;
+    return { ...s, towingArea: area ? area.name : null, towingReason: reason, towingKind: reason ? towingRules[reason].kind : null }; });
   return { ...state, scooters, zones: zonesAt(state), offers, towingAreas: demoTowingAreas, todayCount, operatorHandoffs: state.scooters.filter((s) => s.needsOperator).length, mode: 'demo' };
 }
 
@@ -90,7 +104,9 @@ export function command(state, action) {
     requireValue(action.failUnlock === undefined || typeof action.failUnlock === 'boolean', '장치 시연 옵션이 올바르지 않습니다.', 400);
     requireValue(!action.failUnlock, '모의 장치 잠금 해제에 실패했습니다.', 502);
     const [exit] = offer.destinations;
-    const mission = { id: randomUUID(), scooterId: scooter.id, originId: scooter.zoneId, destinationId: 'exit', towingAreaId: exit.towingAreaId, target: exit.point, status: 'moving', acceptedAt: state.now, expiresAt: new Date(timestamp(state.now) + state.policy.deadlineMinutes * 60_000).toISOString(), route: [scooter.point, exit.point], position: null, alarmed: false, verdict: null };
+    requireValue(action.destinationId === exit.id, '목적지가 올바르지 않습니다.', 400);
+    const minutes = state.policy.deadlineMinutes + (exit.designated ? Math.ceil(exit.distanceM / (state.policy.walkMPerMin ?? demoPolicy.walkMPerMin)) : 0);
+    const mission = { reason: offer.reason, kind: offer.rule.kind, clearM: offer.rule.clearM ?? null, destinationName: exit.name, id: randomUUID(), scooterId: scooter.id, originId: scooter.zoneId, destinationId: exit.id, towingAreaId: exit.towingAreaId, target: exit.point, status: 'moving', acceptedAt: state.now, expiresAt: new Date(timestamp(state.now) + minutes * 60_000).toISOString(), route: [scooter.point, exit.point], position: null, alarmed: false, verdict: null };
     state.missions.unshift(mission);
     event(state, 'unlock', `모의 잠금 해제 성공 · ${exit.name}으로 ${exit.distanceM}m 이동`, mission.id);
     return mission;
@@ -122,9 +138,12 @@ export function command(state, action) {
     return mission;
   }
   requireValue(validPosition(state, mission.position), '최신의 정확한 도착 위치가 필요합니다.');
-  const area = demoTowingAreas.find((a) => a.id === mission.towingAreaId);
-  // GPS error is subtracted so a fix near the edge never counts as having left the area.
-  requireValue(area && distanceM(mission.position.point, area.point) - mission.position.accuracy > area.radiusM, '견인 구역을 벗어난 위치로 확인되지 않습니다.');
+  // GPS error always counts against the citizen: a fix that might still be too close never completes the move.
+  const { point, accuracy } = mission.position;
+  if (mission.kind === 'clear') requireValue(distanceM(point, mission.route[0]) - accuracy >= mission.clearM, `${mission.reason}에서 ${mission.clearM}m 넘게 옮긴 위치로 확인되지 않습니다.`);
+  else if (mission.kind === 'protected') requireValue(distanceM(point, mission.target) + accuracy <= state.policy.arrivalRadiusM, '지정 주차구역에 도착한 위치로 확인되지 않습니다.');
+  else { const area = demoTowingAreas.find((a) => a.id === mission.towingAreaId); // missions saved before towing reasons existed
+    requireValue(area && distanceM(point, area.point) - accuracy > area.radiusM, '견인 구역을 벗어난 위치로 확인되지 않습니다.'); }
   requireValue(action.photoPresent === true, '사진 증빙이 필요합니다.', 400);
   requireValue(['approved', 'rejected', 'uncertain'].includes(action.verdict), '사진 판정값이 올바르지 않습니다.', 400);
   mission.verdict = action.verdict;
@@ -134,7 +153,7 @@ export function command(state, action) {
     return mission;
   }
   mission.status = 'completed'; mission.completedAt = state.now;
-  Object.assign(scooter, { zoneId: null, point: mission.target, lastMovedAt: state.now, needsOperator: false, handoff: false });
+  Object.assign(scooter, { zoneId: null, point: mission.target, lastMovedAt: state.now, needsOperator: false, handoff: false, resolved: true });
   state.points += state.policy.reward;
   event(state, 'reward', `이동 완료 · ${state.policy.reward.toLocaleString('ko-KR')} 시연 포인트 적립`, mission.id);
   return mission;
