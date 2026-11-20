@@ -1,6 +1,6 @@
 // Synthetic mission demo (mock unlock, alarms, rewards). Served only at /api/demo and only to local hosts.
 import express from 'express';
-import { command, createDemo, snapshot, zonesAt } from './simulation.mjs';
+import { command, createDemo, snapshot } from './simulation.mjs';
 
 export function createDemoRouter({ store }) {
   const router = express.Router();
@@ -13,12 +13,6 @@ export function createDemoRouter({ store }) {
   });
   router.use(express.json({ limit: '16kb' }));
   router.get('/state', (_req, res) => res.json(snapshot(store.read())));
-  // Read-only playback for the web map: zone verdicts at a requested time, without touching missions or the demo clock.
-  router.get('/zones', (req, res) => {
-    const at = typeof req.query.at === 'string' ? Date.parse(req.query.at) : NaN;
-    if (!Number.isFinite(at) || Math.abs(at - Date.now()) > 30 * 86_400_000) return res.status(400).json({ error: '조회 시각은 오늘 기준 30일 안의 ISO 시각이어야 합니다.' });
-    res.json({ at: new Date(at).toISOString(), zones: zonesAt(store.read(), at) });
-  });
   router.post('/command', (req, res) => {
     const result = store.transact((state) => {
       if (req.body?.type !== 'reset') return command(state, req.body);

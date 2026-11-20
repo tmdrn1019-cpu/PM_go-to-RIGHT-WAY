@@ -68,3 +68,8 @@ test('한 운영사의 기기 조회가 실패해도 선택 지역과 다른 운
  const read=createFleet({apiKey:'key',fetchImpl:async(url)=>{if(url.includes('GetPMProvider'))return Response.json(catalog);throw new Error('unavailable');}});
  const state=await read('12','GBIKE');assert.equal(state.status,'error');assert.equal(state.cityName,'세종특별시');assert.equal(state.providers.length,2);assert.deepEqual(state.vehicles,[]);
 });
+test('견인 집계는 자치구를 지정하지 않으면 서울 전체를 주소별로 묶는다',()=>{
+ const seoul=aggregateTowing([row,{...row,NO:'2',GU_NM:'강남구',ADDR:'서울특별시 강남구 청담동 77'}],null);
+ assert.deepEqual(seoul.areas.map(a=>[a.district,a.count]).sort(),[['강남구',1],['관악구',1]]);
+ assert.equal(seoul.districtRows,2);
+});

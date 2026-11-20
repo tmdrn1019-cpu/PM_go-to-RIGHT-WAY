@@ -12,7 +12,9 @@
     "dev": "node --env-file-if-exists=.env.local node_modules/vite/bin/vite.js --host 127.0.0.1",
     "test": "node --test tests/*.test.mjs",
     "build": "vite build",
-    "start": "node --env-file-if-exists=.env.local server/index.mjs"
+    "start": "node --env-file-if-exists=.env.local server/index.mjs",
+    "build:zones": "node --env-file-if-exists=.env.local server/build-public-zones.mjs",
+    "convert:sidewalk": "python -I server/convert-sidewalk-2015.py"
   },
   "dependencies": {
     "@astryxdesign/core": "0.7.16",

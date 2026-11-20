@@ -12,9 +12,10 @@ export function matchAddress(address,data){
  const result=data?.result;const rows=result?.resultdata;
  if(data?.errCd!==0||String(result?.matching)!=='0'||String(result?.totalcount)!=='1'||!Array.isArray(rows)||rows.length!==1)return null;
  const row=rows[0];
- if(String(row.addr_type)!=='6'||row.sido_nm!=='서울특별시'||row.sgg_nm!=='관악구')return null;
- const match=/^서울특별시 관악구 (.+(?:동|가|리|대로|로|길)) (\d+)(?:-(\d+))?$/.exec(address);
- if(!match)return null;
+ const match=/^서울특별시 (\S+구) (.+(?:동|가|리|대로|로|길)) (\d+)(?:-(\d+))?$/.exec(address);
+ // The district in the address must be the district SGIS resolved (any Seoul 구, not only 관악구).
+ if(!match||String(row.addr_type)!=='6'||row.sido_nm!=='서울특별시'||row.sgg_nm!==match[1])return null;
+ match.shift(); // drop the district so the indices below stay place, main, sub
  const road=/(대로|로|길)$/.test(match[1]);
  const main=road?row.road_nm_main_no:row.jibun_main_no;const rawSub=road?row.road_nm_sub_no:row.jibun_sub_no;
  // SGIS represents an absent sub-number as the string "null" in live parcel results.

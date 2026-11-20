@@ -14,7 +14,7 @@ export function readSensorLocations(file = process.env.SDOT_SENSOR_FILE || 'data
       if (typeof s.id !== 'string' || !s.id || s.id.length > 64 || ids.has(s.id) || !validPoint(s.point)) throw Error();
       ids.add(s.id);
     }
-    return { status: 'ready', sensors: data.sensors.map(({ id, point }) => ({ id, point })) };
+    return { status: 'ready', sensors: data.sensors.map(({ id, point, address }) => ({ id, point, ...(typeof address === 'string' && address.length <= 200 ? { address } : {}) })) };
   } catch (error) { return { status: error.code === 'ENOENT' ? 'unconfigured' : 'error', sensors: [] }; }
 }
 

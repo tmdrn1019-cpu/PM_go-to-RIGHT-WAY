@@ -68,3 +68,9 @@ test('SGIS empty search and quota errors remain distinct',async()=>{
   if(code===-100)assert.equal(await geocode(address),null);else await assert.rejects(geocode(address),/조회 실패/);
  }
 });
+test('SGIS matching works for any Seoul district but still requires the same district',()=>{
+ const gangnam={...row,sgg_nm:'강남구',leg_nm:'청담동',jibun_main_no:'77',jibun_sub_no:'null'};
+ assert.deepEqual(matchAddress('서울특별시 강남구 청담동 77',response({resultdata:[gangnam]})),[37.48,126.95]);
+ assert.equal(matchAddress('서울특별시 서초구 청담동 77',response({resultdata:[gangnam]})),null);
+ assert.equal(matchAddress('경기도 성남시 청담동 77',response({resultdata:[gangnam]})),null);
+});
