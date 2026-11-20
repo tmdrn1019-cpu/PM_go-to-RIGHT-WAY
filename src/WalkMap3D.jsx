@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { VStack } from '@astryxdesign/core/Layout';
+import { pmPin } from './pm-pin.mjs';
 
 // Real streets with OSM building heights (OpenFreeMap, no key). Used only while a scooter is being walked.
 const STYLE = 'https://tiles.openfreemap.org/styles/liberty';
@@ -30,7 +31,8 @@ export default function WalkMap3D({ route, point, clearM, startLabel, targetLabe
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showZoom: true }), 'top-right');
     new maplibregl.Marker({ element: dot(startLabel, color('--color-error'), '16px') }).setLngLat(ll(route[0])).addTo(map);
     new maplibregl.Marker({ color: color('--color-success'), title: targetLabel }).setLngLat(ll(route[1])).addTo(map);
-    scooter.current = new maplibregl.Marker({ element: dot(scooterLabel, color('--color-accent'), '22px') }).setLngLat(ll(point)).addTo(map);
+    const pin = document.createElement('span'); pin.innerHTML = pmPin({ picked: true }).svg; pin.title = scooterLabel; pin.setAttribute('aria-label', scooterLabel); pin.setAttribute('role', 'img');
+    scooter.current = new maplibregl.Marker({ element: pin, anchor: 'bottom' }).setLngLat(ll(point)).addTo(map);
     map.once('style.load', () => {
       ready = true;
       if (clearM) {

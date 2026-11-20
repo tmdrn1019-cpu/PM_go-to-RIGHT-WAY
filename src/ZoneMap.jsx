@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import { VStack } from '@astryxdesign/core/Layout';
 import { Text } from '@astryxdesign/core/Text';
 import { visibleMapCenterY } from './zone-search.mjs';
+import { pmPin } from './pm-pin.mjs';
 
 const names = { open: '개방', reduced: '축소 운영', closed: '폐쇄', unknown: '확인 중' };
 const pilotCenter = [37.4827, 126.941];
@@ -57,9 +58,9 @@ export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [],
     }
     for (const vehicle of vehicles) {
       const picked = vehicle.id === selectedVehicleId;
-      // Alerts also get a bigger, thicker marker so they are not told apart by colour alone.
-      const marker = L.circleMarker(vehicle.point, { radius: picked ? 9 : vehicle.alert ? 7 : 5, weight: picked || vehicle.alert ? 3 : 1, color: color(vehicle.alert ? '--color-error' : '--color-accent'), fillOpacity: 0.8 }).addTo(layer.current);
       const label = document.createElement('strong'); label.textContent = vehicle.label ?? `${vehicle.cityName} · ${vehicle.provider} ${vehicle.id} · 배터리 ${vehicle.battery}% · 원관측 시각 미제공`;
+      const pin = pmPin({ alert: vehicle.alert, picked, battery: vehicle.battery });
+      const marker = L.marker(vehicle.point, { icon: L.divIcon({ html: pin.svg, className: '', iconSize: [pin.width, pin.height], iconAnchor: [pin.width / 2, pin.height], tooltipAnchor: [0, -pin.height] }), title: label.textContent, zIndexOffset: picked ? 1000 : vehicle.alert ? 500 : 0 }).addTo(layer.current);
       marker.bindTooltip(label);
       if (onVehicleSelect) marker.on('click', () => onVehicleSelect(vehicle.id));
     }
