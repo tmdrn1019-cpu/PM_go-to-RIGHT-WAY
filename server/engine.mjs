@@ -106,6 +106,11 @@ export function distanceM(a, b) {
   return 6_371_000 * 2 * Math.asin(Math.sqrt(Math.min(1, h)));
 }
 
+// Evenly spaced points from a straight two-point route's start to its end (the last one is the end itself).
+export function walkSteps([from, to], count) {
+  return Array.from({ length: count }, (_, i) => i === count - 1 ? to : [from[0] + (to[0] - from[0]) * (i + 1) / count, from[1] + (to[1] - from[1]) * (i + 1) / count]);
+}
+
 export function distanceToRouteM(point, route) {
   if (route.length < 2) return route.length ? distanceM(point, route[0]) : Infinity;
   const scaleX = 111_195 * Math.cos(point[0] * Math.PI / 180);

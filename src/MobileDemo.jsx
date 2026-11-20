@@ -10,13 +10,15 @@ import { Divider } from '@astryxdesign/core/Divider';
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
 import { Thumbnail } from '@astryxdesign/core/Thumbnail';
 import ZoneMap from './ZoneMap';
-import { distanceM } from '../server/engine.mjs';
+import { distanceM, walkSteps } from '../server/engine.mjs';
 
 // Citizen app walk-through on synthetic data: scooters, unlock, GPS, photo check and points are all mock.
 const NEAR_M = 500;
 // Standpoints a short walk from the real towing hotspots, for viewers who are not in 관악구.
 const SPOTS = [{ label: '신림역 주변', point: [37.4848, 126.9282] }, { label: '봉천동 주변', point: [37.4800, 126.9430] }];
 const STEPS = ['킥보드 선택', '끌고 이동', '사진 확인'];
+// Demo walk: positions sent to the server one by one; the marker only glides to a point after the server accepted it.
+const WALK_STEPS = 4; const GLIDE_MS = 1200;
 const time = (value) => new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value));
 const row = { borderBottom: 'var(--border-width) solid var(--color-border)' };
 
@@ -47,8 +49,10 @@ export default function MobileDemo() {
       (e) => { setLocating(false); setMessage(e.code === 1 ? '위치 권한을 허용하지 않았습니다. 시연 위치를 골라 주세요.' : '위치를 확인하지 못했습니다. 시연 위치를 골라 주세요.'); }, { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 });
   };
 
+  const [walkStep, setWalkStep] = useState(0); const [walkPoint, setWalkPoint] = useState(null);
   const active = state?.missions.find((m) => ['moving', 'verifying'].includes(m.status));
-  const arrived = !!active?.position && distanceM(active.position.point, active.target) <= 15;
+  // Stay on the walking screen until every step is sent, even once a late step is inside the arrival radius.
+  const arrived = walkStep === 0 && !!active?.position && distanceM(active.position.point, active.target) <= 15;
   const exits = new Map((state?.offers ?? []).map((o) => [o.id, o.destinations[0]]));
   const nearby = (state?.scooters ?? []).filter((s) => s.point).map((s) => ({ ...s, distance: distanceM(me.point, s.point), exit: exits.get(s.id) }))
     .filter((s) => s.distance <= NEAR_M).sort((a, b) => !!b.exit - !!a.exit || a.distance - b.distance);
@@ -61,7 +65,27 @@ export default function MobileDemo() {
   const noop = useCallback(() => {}, []);
 
   const start = async (s) => { if (await send({ type: 'accept', scooterId: s.id, destinationId: 'exit', failUnlock }, `잠금이 해제됐어요 (모의). ${s.exit.distanceM}m만 끌고 가면 돼요.`)) setPicked(null); };
-  const arrive = () => send({ type: 'position', missionId: active.id, point: active.target, accuracy: 8, observedAt: state.now }, '견인 구역을 벗어났어요. 세워 둔 모습을 찍어 주세요.');
+  const locked = busy || walkStep > 0;
+  const glide = (from, to) => new Promise((resolve) => {
+    // Reduced motion: jump instead of gliding, but keep the pause so each step is still seen.
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setWalkPoint(to); setTimeout(resolve, GLIDE_MS); return; }
+    const begin = performance.now();
+    const frame = (now) => { const t = Math.min(1, (now - begin) / GLIDE_MS); setWalkPoint([from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t]); if (t < 1) requestAnimationFrame(frame); else resolve(); };
+    requestAnimationFrame(frame);
+  });
+  const walk = async () => {
+    const { id, route } = active; const observedAt = state.now; let from = active.position?.point ?? route[0];
+    const steps = walkSteps(route, WALK_STEPS);
+    // Hold the marker where it is while a step is in flight; otherwise it jumps to the accepted point and back before gliding.
+    setWalkPoint(from);
+    for (const [i, point] of steps.entries()) {
+      setWalkStep(i + 1);
+      const last = i === steps.length - 1;
+      if (!await send({ type: 'position', missionId: id, point, accuracy: 8, observedAt }, last ? '견인 구역을 벗어났어요. 세워 둔 모습을 찍어 주세요.' : null)) break;
+      await glide(from, point); from = point;
+    }
+    setWalkStep(0); setWalkPoint(null);
+  };
   const photo = async () => {
     if (!shot) { setMessage('주차한 모습을 먼저 찍어 주세요.'); return; }
     const id = active.id; const scooterId = active.scooterId;
@@ -84,20 +108,23 @@ export default function MobileDemo() {
         : arrived ? <Text>빨간 원 밖에 세웠다면 주차 모습을 찍어 제출해 주세요.</Text>
         : <Text type="large">빨간 원(견인 구역) 밖으로 걸어서 끌고 가 주세요. 타고 이동하지 마세요.</Text>}
       <Text type="supporting">{time(active.expiresAt)}까지 · 원 밖이면 어디든 괜찮아요{active.alarmed ? ' · 경로 이탈 경보 발생' : ''}</Text>
-      {!arrived ? <Button label="도착했어요" isDisabled={busy} onClick={arrive} /> : <VStack gap={3}>
+      {!arrived ? <VStack gap={2}>
+        <Button label={walkStep ? `끌고 이동 중 ${walkStep}/${WALK_STEPS}` : '끌고 이동 시작 (시연)'} isLoading={walkStep > 0} isDisabled={locked} onClick={walk} />
+        <Text type="supporting" aria-live="polite">{walkStep ? `모의 위치 ${walkStep}/${WALK_STEPS}을 서버에 보내고 있어요.` : `시연에서는 경로를 따라 모의 위치 ${WALK_STEPS}개를 차례로 서버에 보내요. 지도의 킥보드는 서버가 받은 위치로만 움직여요.`}</Text>
+      </VStack> : <VStack gap={3}>
         <input ref={camera} type="file" accept="image/*" capture="environment" hidden aria-hidden="true" tabIndex={-1} onChange={(e) => { takeShot(e.target.files?.[0] ?? null); e.target.value = ''; }} />
         {shot ? <>
           <Thumbnail src={shot.url} alt="찍은 주차 사진 미리보기" label={shot.name} />
           <Text type="supporting">사진은 이 휴대폰 화면에서만 보여 주고 서버로 보내지 않아요. 정주차 판정은 모의 결과입니다.</Text>
-          <HStack gap={2} wrap="wrap"><Button label="이 사진으로 제출" isDisabled={busy} onClick={photo} /><Button label="다시 찍기" variant="secondary" isDisabled={busy} onClick={() => camera.current?.click()} /></HStack>
-        </> : <Button label="카메라로 주차 사진 찍기" isDisabled={busy} onClick={() => camera.current?.click()} />}
+          <HStack gap={2} wrap="wrap"><Button label="이 사진으로 제출" isDisabled={locked} onClick={photo} /><Button label="다시 찍기" variant="secondary" isDisabled={locked} onClick={() => camera.current?.click()} /></HStack>
+        </> : <Button label="카메라로 주차 사진 찍기" isDisabled={locked} onClick={() => camera.current?.click()} />}
       </VStack>}
-      <Button label="미션 취소" variant="ghost" isDisabled={busy} onClick={() => send({ type: 'cancel', missionId: active.id }, '미션을 취소했어요. 기기는 운영사가 확인합니다.')} />
+      <Button label="미션 취소" variant="ghost" isDisabled={locked} onClick={() => send({ type: 'cancel', missionId: active.id }, '미션을 취소했어요. 기기는 운영사가 확인합니다.')} />
     </VStack> : chosen ? <VStack gap={3}>
       <Heading level={2}>{chosen.id}</Heading>
       <Text>나에게서 {Math.round(chosen.distance)}m · {chosen.towingArea ? `${chosen.towingArea} 안` : '견인 구역 밖'}</Text>
       {chosen.exit ? <><Text type="large">견인 구역 밖으로 {chosen.exit.distanceM}m만 옮기면 {state.policy.reward.toLocaleString('ko-KR')}P</Text>
-        <Button label="잠금 해제하고 시작" isDisabled={busy} onClick={() => start(chosen)} /></> : <Text>{chosen.handoff ? '운영사가 확인 중인 기기예요.' : '정상 위치라 옮길 필요가 없어요.'}</Text>}
+        <Button label="잠금 해제하고 시작" isDisabled={locked} onClick={() => start(chosen)} /></> : <Text>{chosen.handoff ? '운영사가 확인 중인 기기예요.' : '정상 위치라 옮길 필요가 없어요.'}</Text>}
       <Button label="목록으로" variant="ghost" onClick={() => setPicked(null)} />
     </VStack> : <VStack gap={3}>
       <HStack hAlign="between" vAlign="center" gap={2}><Heading level={2}>내 주변 킥보드</Heading><Text type="label" color="accent">미션 {nearby.filter((s) => s.exit).length}건</Text></HStack>
@@ -118,20 +145,23 @@ export default function MobileDemo() {
       <Text type="supporting">시연 시각 {time(state.now)} · 포인트 {state.points.toLocaleString('ko-KR')}P · 오늘 미션 {state.todayCount}/{state.policy.dailyLimit} · 운영사 인계 {state.operatorHandoffs}대</Text>
       <CheckboxInput label="다음 잠금 해제를 실패로 시연" value={failUnlock} onChange={setFailUnlock} />
       <HStack gap={2} wrap="wrap">
-        {active?.status === 'moving' && <Button label="경로 이탈 위치 보내기" size="sm" variant="secondary" isDisabled={busy} onClick={() => send({ type: 'position', missionId: active.id, point: [active.route[0][0] + 0.002, active.route[0][1] + 0.002], accuracy: 8, observedAt: state.now }, '경로를 벗어난 위치를 보냈어요 (모의 경보).')} />}
-        {active && <Button label="사진 판별 불가로 제출" size="sm" variant="secondary" isDisabled={busy || !arrived} onClick={() => send({ type: 'complete', missionId: active.id, photoPresent: true, verdict: 'uncertain' }, '판별할 수 없어 포인트를 주지 않았어요.')} />}
-        <Button label="10분 진행" size="sm" variant="secondary" isDisabled={busy} onClick={() => send({ type: 'advance', minutes: 10 }, '시연 시계를 10분 진행했어요.')} />
-        <Button label="시연 초기화" size="sm" variant="ghost" isDisabled={busy} onClick={() => { if (window.confirm('시연 미션·포인트·기록을 처음으로 되돌릴까요?')) { setFinished(null); setPicked(null); send({ type: 'reset', confirm: true }, '시연을 초기화했어요.'); } }} />
+        {active?.status === 'moving' && <Button label="경로 이탈 위치 보내기" size="sm" variant="secondary" isDisabled={locked} onClick={() => send({ type: 'position', missionId: active.id, point: [active.route[0][0] + 0.002, active.route[0][1] + 0.002], accuracy: 8, observedAt: state.now }, '경로를 벗어난 위치를 보냈어요 (모의 경보).')} />}
+        {active && <Button label="사진 판별 불가로 제출" size="sm" variant="secondary" isDisabled={locked || !arrived} onClick={() => send({ type: 'complete', missionId: active.id, photoPresent: true, verdict: 'uncertain' }, '판별할 수 없어 포인트를 주지 않았어요.')} />}
+        <Button label="10분 진행" size="sm" variant="secondary" isDisabled={locked} onClick={() => send({ type: 'advance', minutes: 10 }, '시연 시계를 10분 진행했어요.')} />
+        <Button label="시연 초기화" size="sm" variant="ghost" isDisabled={locked} onClick={() => { if (window.confirm('시연 미션·포인트·기록을 처음으로 되돌릴까요?')) { setFinished(null); setPicked(null); send({ type: 'reset', confirm: true }, '시연을 초기화했어요.'); } }} />
       </HStack>
       <VStack gap={1}>{state.events.slice(0, 8).map((e) => <Text key={e.id} type="supporting">{time(e.at)} · {e.message}</Text>)}</VStack>
     </VStack>}
   </VStack>;
 
-  const position = active?.position ? { point: active.position.point, accuracy: active.position.accuracy } : { point: me.point, accuracy: me.accuracy || 8 };
+  // During a mission the walker and the scooter share the last server-accepted point (or the glide toward it).
+  const missionPoint = active && (walkPoint ?? active.position?.point ?? active.route[0]);
+  const missionVehicles = active ? [{ id: active.scooterId, point: missionPoint, label: `${active.scooterId} · 끌고 이동 중 (시연·모의 위치)` }] : vehicles;
+  const position = active?.position || walkPoint ? { point: missionPoint, accuracy: active.position?.accuracy ?? 8 } : { point: me.point, accuracy: me.accuracy || 8 };
   return <AppShell height="fill" variant="surface" topNav={<TopNav label="시민 앱 시연" heading={<Link href="/" type="large" weight="bold">PM 주차존</Link>} startContent={<Text type="supporting">시연 · 합성 자료</Text>} endContent={<Text type="label">{state ? `${state.points.toLocaleString('ko-KR')}P` : ''}</Text>} />}>
     <VStack height="100%" gap={0} style={{ minHeight: 0 }}>
       <VStack style={{ height: '45%', minHeight: 0, position: 'relative', flexShrink: 0 }}>
-        <ZoneMap zones={[]} vehicles={active ? [] : vehicles} selectedVehicleId={picked} onVehicleSelect={onVehicleSelect} areas={areas} routes={active ? [active.route] : []} selectedId={null} onSelect={noop} onBoundsChange={noop} focus={focus} position={position} />
+        <ZoneMap zones={[]} vehicles={missionVehicles} selectedVehicleId={active ? active.scooterId : picked} onVehicleSelect={onVehicleSelect} areas={areas} routes={active ? [active.route] : []} selectedId={null} onSelect={noop} onBoundsChange={noop} focus={focus} position={position} fitMaxZoom={active ? 19 : 17} />
       </VStack>
       <Section variant="muted"><Text type="supporting">잠금 해제·GPS·사진 판정·포인트는 모두 모의 동작이며 실제 기기와 계정에 영향이 없습니다. 내 위치는 이 브라우저에서만 씁니다.</Text></Section>
       <VStack padding={4} gap={4} isScrollable style={{ flex: 1, minHeight: 0 }} aria-label="미션 패널">{sheet}</VStack>

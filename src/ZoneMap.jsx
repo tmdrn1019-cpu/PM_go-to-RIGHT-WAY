@@ -9,7 +9,7 @@ import { visibleMapCenterY } from './zone-search.mjs';
 const names = { open: '개방', reduced: '축소 운영', closed: '폐쇄', unknown: '확인 중' };
 const pilotCenter = [37.4827, 126.941];
 
-export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [], designated = [], selectedVehicleId = null, onVehicleSelect, towingAreas, selectedId, onSelect, onBoundsChange, focus, position, bottomFraction = 0, topInset = 0 }) {
+export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [], designated = [], selectedVehicleId = null, onVehicleSelect, towingAreas, selectedId, onSelect, onBoundsChange, focus, position, bottomFraction = 0, topInset = 0, fitMaxZoom = 17 }) {
   const element = useRef(null); const map = useRef(null); const layer = useRef(null);
   const towingLayer = useRef(null);
   const [tileError, setTileError] = useState(false);
@@ -92,9 +92,9 @@ export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [],
       const projected = map.current.project(focus.point, 17);
       projected.y += map.current.getSize().y / 2 - visibleMapCenterY(map.current.getSize().y, bottomFraction, topInset);
       map.current.setView(map.current.unproject(projected, 17), 17, { animate: false });
-    } else if (focus.points?.length) map.current.fitBounds(focus.points, { paddingTopLeft: [30, Math.max(30, topInset)], paddingBottomRight: [30, map.current.getSize().y * bottomFraction + 30], maxZoom: 17, animate: false });
+    } else if (focus.points?.length) map.current.fitBounds(focus.points, { paddingTopLeft: [30, Math.max(30, topInset)], paddingBottomRight: [30, map.current.getSize().y * bottomFraction + 30], maxZoom: fitMaxZoom, animate: false });
     else map.current.setView(pilotCenter, 15, { animate: false });
-  }, [focus, bottomFraction, topInset]);
+  }, [focus, bottomFraction, topInset, fitMaxZoom]);
   return <VStack height="100%" width="100%" style={{ position: 'relative', minHeight: 0 }}>
     <VStack ref={element} height="100%" width="100%" style={{ zIndex: 0 }} role="region" aria-label="동적 주차존 지도. 같은 정보와 선택 기능은 주차존 목록에서도 이용할 수 있습니다." />
     {tileError && <VStack padding={3} style={{ position: 'absolute', top: '45%', left: 'var(--spacing-4)', right: 'var(--spacing-4)', background: 'var(--color-background-surface)', zIndex: 1 }}><Text role="status">배경 지도 연결이 원활하지 않습니다. 주차존 목록을 이용해 주세요.</Text></VStack>}
