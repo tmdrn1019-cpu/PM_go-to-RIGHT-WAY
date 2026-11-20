@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDemo, snapshot, command, zonesAt } from '../server/simulation.mjs';
-import { evaluateZone, distanceM } from '../server/engine.mjs';
+import { evaluateZone, distanceM, walkSteps } from '../server/engine.mjs';
 import { demoTowingAreas } from '../server/fixtures.mjs';
 
 function accept(state, scooterId = 'PM-001') {
@@ -31,6 +31,20 @@ test('견인 구역 안 기기는 구역 경계 바로 밖까지만 옮기면 �
   assert.equal(moved.zoneId, null); assert.deepEqual(moved.point, mission.target);
   assert.equal(snapshot(state).zones.find((z) => z.id === 'z1').parked, 7);
   assert.equal(snapshot(state).offers.some((o) => o.id === 'PM-001'), false);
+});
+
+test('경로를 따라 끌고 가는 중간 위치는 경보 없이 받고, 마지막 지점에서 완료할 수 있다', () => {
+  const state = createDemo();
+  const mission = accept(state);
+  const steps = walkSteps(mission.route, 4);
+  assert.equal(steps.length, 4); assert.deepEqual(steps.at(-1), mission.target);
+  // Even spacing along the straight route.
+  const total = distanceM(mission.route[0], mission.target);
+  steps.forEach((p, i) => assert.ok(Math.abs(distanceM(mission.route[0], p) - total * (i + 1) / 4) < 0.5));
+  for (const point of steps) command(state, { type: 'position', missionId: mission.id, point, accuracy: 8, observedAt: state.now });
+  assert.equal(state.missions[0].alarmed, false);
+  command(state, done(mission));
+  assert.equal(state.missions[0].status, 'completed');
 });
 
 test('미션 대상은 견인 구역 안의 모든 기기이며 기기마다 최단 거리가 다르다', () => {
