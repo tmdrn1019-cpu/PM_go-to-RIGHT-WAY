@@ -67,10 +67,4 @@ test('서비스 앱은 시연 API를 /api/demo 아래에만 두고 서비스 상
   const accepted = await fetch(`${base}/api/demo/command`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-PM-Demo': '1' }, body: JSON.stringify({ type: 'accept', scooterId: demo.offers[0].id, destinationId: demo.offers[0].destinations[0].id }) });
   assert.equal(accepted.status, 200);
   assert.equal((await fetch(`${base}/api/demo/command`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 403);
-  const revision = store.read().revision;
-  const timed = await (await fetch(`${base}/api/demo/zones?at=${encodeURIComponent(new Date().toISOString())}`)).json();
-  assert.equal(timed.zones.length, 6);
-  assert.equal((await fetch(`${base}/api/demo/zones?at=not-a-date`)).status, 400);
-  assert.equal((await fetch(`${base}/api/demo/zones?at=2000-01-01T00:00:00Z`)).status, 400);
-  assert.equal(store.read().revision, revision);
 });

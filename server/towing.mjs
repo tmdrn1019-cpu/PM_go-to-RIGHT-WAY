@@ -11,15 +11,16 @@ export function publishTowing(data,file='data/towing-areas.json'){
 const check = (valid) => { if (!valid) throw new Error('견인 자료 확인이 필요합니다.'); };
 const day = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
 
-export function aggregateTowing(rows) {
+// district: one 구 name, or null for all of Seoul (hotspot zones); the published 관악구 analysis keeps the default.
+export function aggregateTowing(rows, district = '관악구') {
  const ids=new Set();const groups=new Map();let excludedRows=0;let districtRows=0;const knownDistricts=new Set(Object.values(districts));
  for(const row of rows){
   check(typeof row.NO==='string' && row.NO.length>0 && !ids.has(row.NO));ids.add(row.NO);
   check(knownDistricts.has(row.GU_NM));
-  if(row.GU_NM!=='관악구')continue;districtRows++;
+  if(district!==null&&row.GU_NM!==district)continue;districtRows++;
   if(!day(row.ACTN_DAY)||!day(row.DCLR_DT)||typeof row.ADDR!=='string'||!row.ADDR.trim()||row.ADDR.length>300||typeof row.TYPE!=='string'||!row.TYPE.trim()||row.TYPE.trim()==='오신고'){excludedRows++;continue;}
   const address=row.ADDR.trim().replace(/\s+/g,' ');
-  const group=groups.get(address)??{id:createHash('sha256').update(address).digest('hex').slice(0,20),address,district:'관악구',count:0,firstDate:row.ACTN_DAY,lastDate:row.ACTN_DAY,types:Object.create(null)};
+  const group=groups.get(address)??{id:createHash('sha256').update(address).digest('hex').slice(0,20),address,district:row.GU_NM,count:0,firstDate:row.ACTN_DAY,lastDate:row.ACTN_DAY,types:Object.create(null)};
   group.count++;group.firstDate=[group.firstDate,row.ACTN_DAY].sort()[0];group.lastDate=[group.lastDate,row.ACTN_DAY].sort().at(-1);
   group.types[row.TYPE]=(Object.hasOwn(group.types,row.TYPE)?group.types[row.TYPE]:0)+1;groups.set(address,group);
  }

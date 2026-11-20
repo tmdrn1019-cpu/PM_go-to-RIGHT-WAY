@@ -116,3 +116,21 @@ export function distanceToRouteM(point, route) {
     return Math.hypot(a[0] + t * dx, a[1] + t * dy);
   }));
 }
+
+// User policy (2026-11-20): public data never reaches LOS D, so towing-hotspot zones follow each place's own
+// hourly profile instead. Busiest 10% of hours close, the next 20% (top 30%) reduce to the smaller layout.
+export const RELATIVE_POLICY = { closeShare: 0.1, reduceShare: 0.3 };
+export function evaluateRelative(zone, at, policy = RELATIVE_POLICY) {
+  const time = new Date(at).getTime();
+  const counts = Object.values(zone.hourlyCounts ?? {}).filter((n) => Number.isFinite(n) && n >= 0).sort((a, b) => b - a);
+  const hour = new Date(time + OFFSET).getUTCHours();
+  const count = zone.hourlyCounts?.[hour];
+  const capacities = (zone.layouts ?? []).map((l) => l.capacity).filter((c) => Number.isInteger(c) && c > 0).sort((a, b) => b - a);
+  const base = { status: 'unknown', capacity: 0, los: null, flow: null, effectiveWidthM: null, nextClose: null, currentPedestrianCount15Min: Number.isFinite(count) ? count : null, reason: '이 시간대 보행량 자료가 없어 판정하지 않습니다.' };
+  if (!Number.isFinite(time) || !Number.isFinite(count) || count < 0 || counts.length < 10 || !capacities.length) return base;
+  // Nearest-rank cut-offs: the count reached by the busiest share of this zone's hours.
+  const cut = (share) => counts[Math.max(0, Math.ceil(counts.length * share) - 1)];
+  if (count >= cut(policy.closeShare)) return { ...base, status: 'closed', reason: `이 장소에서 가장 붐비는 시간대(상위 ${Math.round(policy.closeShare * 100)}%)라 반납을 닫습니다.` };
+  if (count >= cut(policy.reduceShare) && capacities.length > 1) return { ...base, status: 'reduced', capacity: capacities.at(-1), reason: `붐비는 시간대(상위 ${Math.round(policy.reduceShare * 100)}%)라 수용 대수를 줄입니다.` };
+  return { ...base, status: 'open', capacity: capacities[0], reason: '이 장소 평소 수준의 보행량이라 개방합니다.' };
+}
