@@ -9,8 +9,8 @@ export const demoZones = [
   { id: 'z6', name: '봉천동 100-27 옆 골목', area: '봉천동', point: [37.4824, 126.9594], type: '유효폭 부족 사례', layouts: [{ capacity: 4, effectiveWidthM: 1.8 }], pedestrianCount15Min: 500, windows: [] },
 ];
 
-// maxMoveM: demo assumption for a short walk-and-push move; the real limit is an undecided policy.
-export const demoPolicy = { maxMoveM: 300, exitMarginM: 10, dailyLimit: 3, recentMoveMinutes: 120, reward: 1500, deadlineMinutes: 20, corridorM: 50, accuracyM: 30, positionAgeSeconds: 120, arrivalRadiusM: 20 };
+// exitMarginM: demo assumption for how far past a towing area edge the scooter is left.
+export const demoPolicy = { exitMarginM: 10, dailyLimit: 3, recentMoveMinutes: 120, reward: 1500, deadlineMinutes: 20, corridorM: 50, accuracyM: 30, positionAgeSeconds: 120, arrivalRadiusM: 20 };
 
 // Demo towing areas: real 2025 hotspot points with an assumed 30m radius. Not legal no-parking boundaries.
 export const demoTowingAreas = [
