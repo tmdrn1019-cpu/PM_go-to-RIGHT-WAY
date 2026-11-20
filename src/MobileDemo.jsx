@@ -63,8 +63,9 @@ export default function MobileDemo() {
   const chosen = nearby.find((s) => s.id === picked);
   const vehicles = useMemo(() => nearby.map((s) => ({ id: s.id, point: s.point, alert: !!s.towingArea, label: `${s.id} · ${s.towingReason ? `견인 사유: ${s.towingReason}${s.exit ? ' · 미션 가능' : ''}` : '정상 주차'}` })), [nearby]);
   const areas = useMemo(() => (state?.towingAreas ?? []).map((a) => ({ point: a.point, radiusM: a.radiusM, label: `${a.name.replace('구역', '다발 지점')} (시연 가정 반경 ${a.radiusM}m)` })), [state]);
-  useEffect(() => { setFocus({ point: me.point }); }, [me]);
-  useEffect(() => { if (active) setFocus({ points: active.route }); }, [active?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Frame me and the nearby PMs together (the map is short); during a mission, frame the route.
+  const nearbyKey = nearby.map((s) => s.id).join();
+  useEffect(() => { setFocus(active ? { points: active.route } : nearby.length ? { points: [me.point, ...nearby.map((s) => s.point)] } : { point: me.point }); }, [me, nearbyKey, active?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const onVehicleSelect = useCallback((id) => { setPicked(id); setFinished(null); }, []);
   const noop = useCallback(() => {}, []);
 
