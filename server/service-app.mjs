@@ -33,7 +33,7 @@ export function createServiceApp({ feedPath = process.env.SERVICE_DATA_FILE, now
   // Synthetic demo devices around real towing addresses; never real vehicle positions.
   app.get('/api/zones/synthetic-pm', (_req, res) => {
     const data = readPublicZones(publicZonesFile);
-    res.json({ status: data.status, synthetic: true, riskRadiusM: SYNTHETIC_RULES.riskRadiusM, period: data.period ?? null, vehicles: syntheticFleet({ hotspots: data.towingHotspots, designated: data.designated }) });
+    res.json({ status: data.status, synthetic: true, riskRadiusM: SYNTHETIC_RULES.riskRadiusM, period: data.period ?? null, hotspots: data.towingHotspots.filter((h) => Array.isArray(h.point)).map(({ address, count, point }) => ({ address, count, point })), vehicles: syntheticFleet({ hotspots: data.towingHotspots, designated: data.designated }) });
   });
   // The SQLite demo store opens on first demo request so service-only use never touches it.
   let demoRouter;

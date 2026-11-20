@@ -44,3 +44,17 @@ export const demoDesignated = [
   { id: 'pk-173', name: '낙성대입구 교차로 인근', point: [37.47810543215296, 126.96010042371994] },
   { id: 'pk-175', name: '봉천역 3번 출구 인근', point: [37.482748996992946, 126.93985201546155] },
 ];
+
+// Other real 2025 Seoul towing hotspots within 1.5km of the demo standpoints (data/public-zones.json `towingHotspots`).
+// Map display only, drawn like the demo areas with the same assumed radius; scooters and missions never use them.
+export const demoTowingSpots = [
+  { address: '동작구 신대방동 395-61', count: 72, point: [37.491743, 126.923946] },
+  { address: '관악구 봉천동 1732-6', count: 50, point: [37.477787, 126.940165] },
+  { address: '관악구 봉천동 1712-10', count: 49, point: [37.491657, 126.951057] },
+  { address: '관악구 신림동 1467-10', count: 49, point: [37.484659, 126.929645] },
+  { address: '관악구 봉천동 979-8', count: 48, point: [37.483046, 126.940143] },
+  { address: '관악구 신림동 1642-16', count: 46, point: [37.478945, 126.929848] },
+  { address: '동작구 신대방동 722', count: 44, point: [37.49313, 126.919774] },
+  { address: '관악구 봉천동 979-7', count: 43, point: [37.482339, 126.942705] },
+  { address: '관악구 신림동 502', count: 37, point: [37.486486, 126.913581] },
+];

@@ -5,7 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import { VStack } from '@astryxdesign/core/Layout';
 import { Text } from '@astryxdesign/core/Text';
 import { visibleMapCenterY } from './zone-search.mjs';
-import { pmPin } from './pm-pin.mjs';
+import { pmPin, parkingSign } from './pm-pin.mjs';
 
 const names = { open: '개방', reduced: '축소 운영', closed: '폐쇄', unknown: '확인 중' };
 const pilotCenter = [37.4827, 126.941];
@@ -34,25 +34,26 @@ export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [],
     const css = getComputedStyle(element.current);
     const color = (token) => css.getPropertyValue(token).trim() || css.color;
     const palette = { open: color('--color-success'), reduced: color('--color-warning'), closed: color('--color-error'), unknown: color('--color-text-secondary') };
-    // Demo overlays: meter-radius towing circles and mission paths, drawn under the zones.
+    // Towing areas as shaded red areas (where not to leave a PM), drawn under the zones and mission paths.
     for (const area of areas) {
       const label = document.createElement('strong'); label.textContent = area.label;
-      L.circle(area.point, { radius: area.radiusM, color: color('--color-error'), weight: 1, dashArray: '4 4', fillOpacity: 0.08 }).addTo(layer.current).bindTooltip(label);
+      L.circle(area.point, { radius: area.radiusM, color: color('--color-error'), weight: 1.5, opacity: 0.8, fillColor: color('--color-error'), fillOpacity: 0.25 }).addTo(layer.current).bindTooltip(label);
     }
     for (const route of routes) L.polyline(route, { color: color('--color-accent'), weight: 3, dashArray: '6 6', interactive: false }).addTo(layer.current);
-    // Designated zones without an operating verdict: a grey square, so shape (not only colour) separates them from dynamic zones.
+    const sign = (point, options, title, zIndexOffset) => { const s = parkingSign(options);
+      return L.marker(point, { icon: L.divIcon({ html: s.svg, className: '', iconSize: [s.width, s.height], iconAnchor: [s.width / 2, s.height], tooltipAnchor: [0, -s.height] }), title, zIndexOffset }).addTo(layer.current); };
+    // Designated zones without an operating verdict: a smaller grey P sign with no status badge.
     for (const zone of designated) {
-      const square = document.createElement('b');
-      Object.assign(square.style, { display: 'block', width: '100%', height: '100%', background: color('--color-text-secondary'), border: `1px solid ${color('--color-background-surface')}` });
       const label = document.createElement('strong'); label.textContent = `${zone.name} · 서울시 지정 구역 · 운영 상태 없음`;
-      L.marker(zone.point, { icon: L.divIcon({ html: square, className: '', iconSize: [9, 9] }), keyboard: false }).addTo(layer.current).bindTooltip(label);
+      sign(zone.point, { muted: true }, label.textContent, -200).bindTooltip(label);
     }
     for (const zone of zones) {
       const selected = zone.id === selectedId;
       const shape = L.polygon(zone.boundary, { color: palette[zone.status], weight: selected ? 4 : 2, fillOpacity: selected ? 0.4 : 0.18 }).addTo(layer.current);
-      const marker = L.circleMarker(zone.point, { radius: selected ? 10 : 7, color: palette[zone.status], fillColor: palette[zone.status], fillOpacity: 1 }).addTo(layer.current);
+      const text = `${zone.name} · ${names[zone.status]} · 여유 ${zone.available}대`;
+      const marker = sign(zone.point, { status: zone.status, picked: selected }, text, selected ? 900 : 200);
       for (const overlay of [shape, marker]) {
-        const label = document.createElement('strong'); label.textContent = `${zone.name} · ${names[zone.status]} · 여유 ${zone.available}대`;
+        const label = document.createElement('strong'); label.textContent = text;
         overlay.bindTooltip(label); overlay.on('click', () => onSelect(zone.id));
       }
     }

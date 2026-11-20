@@ -68,6 +68,8 @@ test('zones API serves the built file, rejects bad times and reports a missing o
   assert.deepEqual(body.designated.map((d) => d.id), ['pk-2']);
   const fleet = await (await fetch(`${base}/api/zones/synthetic-pm`)).json();
   assert.equal(fleet.synthetic, true); assert.equal(fleet.riskRadiusM, 30); assert.ok(fleet.vehicles.some((v) => v.risk));
+  // Towing hotspots for the red map areas: address, count and point only.
+  assert.ok(fleet.hotspots.length > 0 && fleet.hotspots.every((h) => Object.keys(h).join() === 'address,count,point'));
   assert.equal((await fetch(`${base}/api/zones?at=nope`)).status, 400);
   assert.equal(readPublicZones(join(dir, 'missing.json')).status, 'unconfigured');
   writeFileSync(file, JSON.stringify({ version: 4, zones })); assert.equal(readPublicZones(file).status, 'error');

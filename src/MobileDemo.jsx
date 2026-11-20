@@ -62,7 +62,9 @@ export default function MobileDemo() {
     .filter((s) => s.distance <= NEAR_M).sort((a, b) => !!b.exit - !!a.exit || a.distance - b.distance);
   const chosen = nearby.find((s) => s.id === picked);
   const vehicles = useMemo(() => nearby.map((s) => ({ id: s.id, point: s.point, alert: !!s.towingArea, label: `${s.id} · ${s.towingReason ? `견인 사유: ${s.towingReason}${s.exit ? ' · 미션 가능' : ''}` : '정상 주차'}` })), [nearby]);
-  const areas = useMemo(() => (state?.towingAreas ?? []).map((a) => ({ point: a.point, radiusM: a.radiusM, label: `${a.name.replace('구역', '다발 지점')} (시연 가정 반경 ${a.radiusM}m)` })), [state]);
+  const areas = useMemo(() => [...(state?.towingAreas ?? []).map((a) => ({ point: a.point, radiusM: a.radiusM, label: `${a.name.replace('구역', '다발 지점')} (시연 가정 반경 ${a.radiusM}m)` })),
+    // Other real towing hotspots nearby, shaded the same way so the map reads like a rental app's no-parking areas.
+    ...(state?.towingSpots ?? []).map((h) => ({ point: h.point, radiusM: 30, label: `${h.address} · 2025 견인 ${h.count}건 (가정 반경 30m · 금지 경계 아님)` }))], [state]);
   // Frame me and the nearby PMs together (the map is short); during a mission, frame the route.
   const nearbyKey = nearby.map((s) => s.id).join();
   useEffect(() => { setFocus(active ? { points: active.route } : nearby.length ? { points: [me.point, ...nearby.map((s) => s.point)] } : { point: me.point }); }, [me, nearbyKey, active?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -173,7 +175,7 @@ export default function MobileDemo() {
     <VStack height="100%" gap={0} style={{ minHeight: 0 }}>
       <VStack style={{ height: '45%', minHeight: 0, position: 'relative', flexShrink: 0 }}>
         {active && !no3d ? <Suspense fallback={<Text role="status">3D 지도를 불러오고 있어요.</Text>}><WalkMap3D route={active.route} point={missionPoint} clearM={active.clearM} startLabel={`견인 위치 · ${active.reason ?? '견인 구역'}`} targetLabel={protectedMove ? active.destinationName : '옮길 목표 지점 (원 밖 아무 곳)'} scooterLabel={`${active.scooterId} · 끌고 이동 중 (시연·모의 위치)`} onFail={on3dFail} /></Suspense>
-        : <ZoneMap zones={[]} vehicles={missionVehicles} selectedVehicleId={active ? active.scooterId : picked} onVehicleSelect={onVehicleSelect} areas={areas} routes={active ? [active.route] : []} selectedId={null} onSelect={noop} onBoundsChange={noop} focus={focus} position={position} fitMaxZoom={active ? 19 : 17} />}
+        : <ZoneMap zones={active ? [] : state?.zones ?? []} designated={active ? [] : state?.designated ?? []} vehicles={missionVehicles} selectedVehicleId={active ? active.scooterId : picked} onVehicleSelect={onVehicleSelect} areas={areas} routes={active ? [active.route] : []} selectedId={null} onSelect={noop} onBoundsChange={noop} focus={focus} position={position} fitMaxZoom={active ? 19 : 17} />}
       </VStack>
       <Section variant="muted"><Text type="supporting">{active && !no3d ? '3D 건물: © OpenStreetMap · OpenFreeMap. 견인 사유 시설의 위치는 시연 가정입니다. ' : ''}잠금 해제·GPS·사진 판정·포인트는 모두 모의 동작이며 실제 기기와 계정에 영향이 없습니다. 내 위치는 이 브라우저에서만 씁니다.</Text></Section>
       <VStack padding={4} gap={4} isScrollable style={{ flex: 1, minHeight: 0 }} aria-label="미션 패널">{sheet}</VStack>
