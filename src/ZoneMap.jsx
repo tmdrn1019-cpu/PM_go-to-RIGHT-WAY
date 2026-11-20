@@ -9,7 +9,7 @@ import { visibleMapCenterY } from './zone-search.mjs';
 const names = { open: '개방', reduced: '축소 운영', closed: '폐쇄', unknown: '확인 중' };
 const pilotCenter = [37.4827, 126.941];
 
-export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [], towingAreas, selectedId, onSelect, onBoundsChange, focus, position, bottomFraction = 0 }) {
+export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [], selectedVehicleId = null, onVehicleSelect, towingAreas, selectedId, onSelect, onBoundsChange, focus, position, bottomFraction = 0 }) {
   const element = useRef(null); const map = useRef(null); const layer = useRef(null);
   const towingLayer = useRef(null);
   const [tileError, setTileError] = useState(false);
@@ -49,15 +49,17 @@ export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [],
       }
     }
     for (const vehicle of vehicles) {
-      const marker = L.circleMarker(vehicle.point, { radius: 5, color: color('--color-accent'), fillOpacity: 0.8 }).addTo(layer.current);
-      const label = document.createElement('strong'); label.textContent = `${vehicle.cityName} · ${vehicle.provider} ${vehicle.id} · 배터리 ${vehicle.battery}% · 원관측 시각 미제공`;
+      const picked = vehicle.id === selectedVehicleId;
+      const marker = L.circleMarker(vehicle.point, { radius: picked ? 9 : 5, weight: picked ? 3 : 1, color: color(vehicle.alert ? '--color-error' : '--color-accent'), fillOpacity: 0.8 }).addTo(layer.current);
+      const label = document.createElement('strong'); label.textContent = vehicle.label ?? `${vehicle.cityName} · ${vehicle.provider} ${vehicle.id} · 배터리 ${vehicle.battery}% · 원관측 시각 미제공`;
       marker.bindTooltip(label);
+      if (onVehicleSelect) marker.on('click', () => onVehicleSelect(vehicle.id));
     }
     if (position) {
       L.circle(position.point, { radius: Math.min(position.accuracy, 5000), color: color('--color-accent'), weight: 1, fillOpacity: 0.07, interactive: false }).addTo(layer.current);
       L.circleMarker(position.point, { radius: 7, color: color('--color-accent'), fillOpacity: 1, interactive: false }).addTo(layer.current);
     }
-  }, [zones, vehicles, areas, routes, selectedId, onSelect, position]);
+  }, [zones, vehicles, areas, routes, selectedVehicleId, onVehicleSelect, selectedId, onSelect, position]);
   useEffect(() => {
     if (!map.current) return;
     towingLayer.current.clearLayers();

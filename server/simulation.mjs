@@ -5,6 +5,8 @@ import { evaluateZone, LOS_REFERENCE, distanceM, distanceToRouteM, koreaDay } fr
 const active = (mission) => ['moving', 'verifying'].includes(mission.status);
 const requireValue = (condition, message, status = 409) => { if (!condition) throw Object.assign(new Error(message), { status }); };
 const timestamp = (at) => new Date(at).getTime();
+// Synthetic scooter positions: a fixed spiral of 4~16m around the zone point (TAGO-like individual points).
+const spread = ([lat, lng], i) => { const m = 4 + (i % 4) * 4; const a = i * 2.39996; return [lat + m * Math.cos(a) / 111_195, lng + m * Math.sin(a) / (111_195 * Math.cos(lat * Math.PI / 180))]; };
 const towingAreaAt = (point) => demoTowingAreas.find((area) => distanceM(point, area.point) <= area.radiusM);
 // Shortest way out: straight from the area's center through the start point, to the edge plus a margin.
 export function exitPoint(area, from, marginM) {
@@ -23,7 +25,7 @@ export function createDemo(at = '2026-11-19T17:30:00+09:00') {
   const returnedAt = new Date(noon).toISOString();
   const scooters = demoZones.flatMap((zone, z) => {
     const normalReturn = evaluateZone(zone, returnedAt, LOS_REFERENCE).capacity > 0;
-    return Array.from({ length: [8, 2, 3, 3, 0, 2][z] }, () => ({ id: `PM-${String(++index).padStart(3, '0')}`, zoneId: zone.id, normalReturn, returnedAt, lastMovedAt: null, needsOperator: !normalReturn }));
+    return Array.from({ length: [8, 2, 3, 3, 0, 2][z] }, (_, i) => ({ id: `PM-${String(++index).padStart(3, '0')}`, zoneId: zone.id, point: spread(zone.point, i), normalReturn, returnedAt, lastMovedAt: null, needsOperator: !normalReturn }));
   });
   return { now: new Date(at).toISOString(), revision: 0, zones: structuredClone(demoZones), policy: { ...demoPolicy }, profile: structuredClone(LOS_REFERENCE), scooters, missions: [], points: 0, events: [] };
 }
@@ -60,15 +62,17 @@ export function snapshot(state) {
       // Older saved demo states predate maxMoveM, so fall back to the fixture value.
       .filter((d) => d.distanceM <= (state.policy.maxMoveM ?? demoPolicy.maxMoveM))
       .sort((a, b) => a.distanceM - b.distanceM);
-    const area = towingAreaAt(origin.point);
+    const from = scooter.point ?? origin.point; // older saved demos have no per-scooter point
+    const area = towingAreaAt(from);
     if (area) {
-      const point = exitPoint(area, origin.point, state.policy.exitMarginM ?? demoPolicy.exitMarginM);
-      destinations.unshift({ id: 'exit', name: `${area.name} 밖`, distanceM: Math.round(distanceM(origin.point, point)), available: null, towingAreaId: area.id, point });
+      const point = exitPoint(area, from, state.policy.exitMarginM ?? demoPolicy.exitMarginM);
+      destinations.unshift({ id: 'exit', name: `${area.name} 밖`, distanceM: Math.round(distanceM(from, point)), available: null, towingAreaId: area.id, point });
     }
     return { ...scooter, originName: origin.name, destinations };
   });
   const todayCount = state.missions.filter((m) => koreaDay(m.acceptedAt) === koreaDay(state.now)).length;
-  return { ...state, zones, offers, towingAreas: demoTowingAreas, todayCount, operatorHandoffs: state.scooters.filter((s) => s.needsOperator).length, mode: 'demo' };
+  const scooters = state.scooters.map((s) => ({ ...s, towingArea: (s.point && towingAreaAt(s.point))?.name ?? null }));
+  return { ...state, scooters, zones, offers, towingAreas: demoTowingAreas, todayCount, operatorHandoffs: state.scooters.filter((s) => s.needsOperator).length, mode: 'demo' };
 }
 
 function validPosition(state, position) {
@@ -105,7 +109,7 @@ export function command(state, action) {
     const origin = state.zones.find((z) => z.id === scooter.zoneId);
     const exit = action.destinationId === 'exit' ? offer.destinations[0] : null;
     const destination = exit ? null : state.zones.find((z) => z.id === action.destinationId);
-    const route = exit ? [origin.point, exit.point] : [origin.point, [destination.point[0], origin.point[1]], destination.point];
+    const route = exit ? [scooter.point ?? origin.point, exit.point] : [origin.point, [destination.point[0], origin.point[1]], destination.point];
     const mission = { id: randomUUID(), scooterId: scooter.id, originId: origin.id, destinationId: action.destinationId, ...(exit ? { towingAreaId: exit.towingAreaId, target: exit.point } : {}), status: 'moving', acceptedAt: state.now, expiresAt: new Date(timestamp(state.now) + state.policy.deadlineMinutes * 60_000).toISOString(), route, position: null, alarmed: false, verdict: null };
     state.missions.unshift(mission);
     event(state, 'unlock', exit ? `모의 잠금 해제 성공 · ${exit.name}으로 ${exit.distanceM}m 이동` : '모의 잠금 해제 성공 · 목적지 정원 1대 예약', mission.id);
@@ -156,7 +160,7 @@ export function command(state, action) {
     return mission;
   }
   mission.status = 'completed'; mission.completedAt = state.now;
-  scooter.zoneId = destination?.id ?? null; scooter.lastMovedAt = state.now; scooter.needsOperator = false;
+  scooter.zoneId = destination?.id ?? null; scooter.point = mission.target ?? destination.point; scooter.lastMovedAt = state.now; scooter.needsOperator = false;
   state.points += state.policy.reward;
   event(state, 'reward', `이동 완료 · ${state.policy.reward.toLocaleString('ko-KR')} 시연 포인트 적립`, mission.id);
   return mission;

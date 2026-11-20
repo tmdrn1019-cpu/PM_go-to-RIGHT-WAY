@@ -44,6 +44,15 @@ export default function DemoPage() {
   const routes = useMemo(() => (active ? [active.route] : []), [active]);
   // Zoom to each new mission's route so a 30m towing circle and the short exit move are visible.
   useEffect(() => { if (active) setFocus({ points: active.route }); }, [active?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [picked, setPicked] = useState(null);
+  const onVehicleSelect = useCallback((id) => { setPicked(id); setTab('mission'); }, []);
+  const offerIds = useMemo(() => new Set((state?.offers ?? []).map((o) => o.id)), [state]);
+  // Synthetic scooters in TAGO-like individual positions; red = inside a towing area.
+  const vehicles = useMemo(() => (state?.scooters ?? []).filter((s) => s.point).map((s) => ({ id: s.id, point: s.point, alert: !!s.towingArea,
+    label: `${s.id} · 합성 킥보드 · ${s.towingArea ? `${s.towingArea} 안` : '견인 구역 밖'}${offerIds.has(s.id) ? ' · 클릭해 이동 미션 선택' : ''}` })), [state, offerIds]);
+  const towed = vehicles.filter((v) => v.alert).length;
+  const pickedScooter = state?.scooters.find((s) => s.id === picked);
+  const offers = (state?.offers ?? []).slice().sort((a, b) => (b.id === picked) - (a.id === picked));
   const onBoundsChange = useCallback(() => {}, []);
   const onSelect = useCallback(() => {}, []);
 
@@ -85,11 +94,13 @@ export default function DemoPage() {
     </VStack> : <VStack gap={3}>
       <Heading level={2}>이동이 필요한 기기 {state.offers.length}대</Heading>
       <Text type="supporting">정원을 넘긴 존의 정상 반납 기기만 대상이며, 최근 {state.policy.recentMoveMinutes}분 안에 옮긴 기기는 빠집니다.</Text>
+      <Text>견인 구역 안 기기 {towed}대 (지도의 빨간 점) · 지도에서 기기를 눌러 선택할 수 있습니다.</Text>
+      {pickedScooter && <Text type="label" aria-live="polite">선택한 기기: {pickedScooter.id} · {pickedScooter.towingArea ? `${pickedScooter.towingArea} 안` : '견인 구역 밖'}{offerIds.has(pickedScooter.id) ? ' · 아래 맨 위에서 이동할 수 있습니다' : pickedScooter.needsOperator ? ' · 운영사 인계 대상이라 시민 미션으로 옮기지 않습니다' : ' · 지금은 이동 미션 대상이 아닙니다'}</Text>}
       <CheckboxInput label="잠금 해제 실패 상황 시연" value={failUnlock} onChange={setFailUnlock} />
-      <VStack gap={0}>{state.offers.map((offer) => {
+      <VStack gap={0}>{offers.map((offer) => {
         const chosen = destinations[offer.id] ?? offer.destinations[0]?.id ?? '';
         return <VStack key={offer.id} gap={2} paddingBlock={3} style={{ borderBottom: 'var(--border-width) solid var(--color-border)' }}>
-          <Text type="label">{offer.id} · {offer.originName}</Text>
+          <Text type="label">{offer.id === picked ? '▶ 지도에서 선택 · ' : ''}{offer.id} · {offer.originName}</Text>
           {offer.destinations.length ? <>
             <Selector label={`${offer.id} 목적지`} value={chosen} onChange={(value) => setDestinations((prev) => ({ ...prev, [offer.id]: value }))} options={offer.destinations.map((d) => ({ value: d.id, label: `${d.name} · ${d.distanceM}m · ${d.id === 'exit' ? '가장 짧은 이동 · 정원·보행량 확인 없음' : `여유 ${d.available}대`}` }))} />
             <Button label={`${offer.id} 미션 수락·잠금 해제`} size="sm" isDisabled={busy} onClick={() => { send({ type: 'accept', scooterId: offer.id, destinationId: chosen, failUnlock }, '모의 잠금 해제에 성공했습니다. 걸어서 끌고 이동하세요.'); }} />
@@ -114,7 +125,7 @@ export default function DemoPage() {
     {mobile ? <VStack padding={4} gap={4} isScrollable style={{ height: '100%' }}>{panel}</VStack>
       : <HStack height="100%" gap={0} style={{ minHeight: 0, overflow: 'hidden' }}>
         <VStack as="aside" width="26rem" height="100%" padding={5} gap={4} isScrollable style={{ flexShrink: 0, borderInlineEnd: 'var(--border-width) solid var(--color-border)', background: 'var(--color-background-surface)' }} aria-label="이동 미션 시연 패널">{panel}</VStack>
-        <VStack height="100%" style={{ flex: 1, minWidth: 0, position: 'relative' }}><ZoneMap zones={zones} areas={areas} routes={routes} selectedId={null} onSelect={onSelect} onBoundsChange={onBoundsChange} focus={focus ?? overview} position={position} /></VStack>
+        <VStack height="100%" style={{ flex: 1, minWidth: 0, position: 'relative' }}><ZoneMap zones={zones} vehicles={vehicles} selectedVehicleId={picked} onVehicleSelect={onVehicleSelect} areas={areas} routes={routes} selectedId={null} onSelect={onSelect} onBoundsChange={onBoundsChange} focus={focus ?? overview} position={position} /></VStack>
       </HStack>}
   </AppShell>;
 }
