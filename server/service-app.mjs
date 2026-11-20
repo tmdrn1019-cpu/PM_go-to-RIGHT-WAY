@@ -3,18 +3,15 @@ import { readServiceFeed } from './service-feed.mjs';
 import { createSeoulData } from './seoul-data.mjs';
 import { readTowing } from './towing.mjs';
 import { createFleet } from './fleet.mjs';
-import { withGeocodes, createSgis } from './sgis.mjs';
-import { createOfficialZones } from './official-zones.mjs';
+import { withGeocodes } from './sgis.mjs';
 import { createDemoRouter } from './app.mjs';
 import { createStore } from './store.mjs';
 import { selectCandidates, readSensorLocations } from './candidates.mjs';
-import { createAdminRouter } from './admin.mjs';
 
-export function createServiceApp({ feedPath = process.env.SERVICE_DATA_FILE, now = () => new Date().toISOString(), publicData = { apiKey: process.env.SEOUL_OPEN_DATA_KEY }, adminToken = process.env.ADMIN_TOKEN, adminTokens = process.env.ADMIN_TOKENS, geocode = createSgis(), demoStore } = {}) {
+export function createServiceApp({ feedPath = process.env.SERVICE_DATA_FILE, now = () => new Date().toISOString(), publicData = { apiKey: process.env.SEOUL_OPEN_DATA_KEY }, demoStore } = {}) {
   const app = express(); app.disable('x-powered-by');
   const readPublicData = createSeoulData(publicData);
   const readFleet = createFleet({ apiKey: process.env.TAGO_SERVICE_KEY });
-  const readOfficialZones = createOfficialZones({ readParking: async () => (await readPublicData()).parking, geocode });
   app.use('/api', (_req, res, next) => {
     res.set({ 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin' }); next();
   });
@@ -23,11 +20,9 @@ export function createServiceApp({ feedPath = process.env.SERVICE_DATA_FILE, now
   app.get('/api/towing/areas', (_req, res) => res.json(withGeocodes(readTowing())));
   app.get('/api/towing/candidates', async (_req, res) => res.json(selectCandidates(withGeocodes(readTowing()), (await readPublicData()).pedestrians, readSensorLocations())));
   app.get('/api/pm/vehicles', async (req, res) => res.json(await readFleet(typeof req.query.cityCode === 'string' ? req.query.cityCode : '', typeof req.query.provider === 'string' ? req.query.provider : '')));
-  app.get('/api/parking/official', async (_req, res) => res.json(await readOfficialZones()));
   // The SQLite demo store opens on first demo request so service-only use never touches it.
   let demoRouter;
   app.use('/api/demo', (req, res, next) => (demoRouter ??= createDemoRouter({ store: demoStore ?? createStore(process.env.DEMO_DATA_FILE || undefined) }))(req, res, next));
-  app.use('/api/admin', createAdminRouter({ feedPath, tokens: adminTokens, token: adminToken, now }));
   app.use('/api', (_req, res) => res.status(404).json({ error: '지원하지 않는 서비스 API입니다.' }));
   return app;
 }

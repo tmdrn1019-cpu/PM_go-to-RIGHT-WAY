@@ -19,10 +19,9 @@ async function setup(t) {
   return { store, file, base, post };
 }
 
-test('API는 정원 1개에 대한 동시 수락 중 하나만 확정한다', async (t) => {
+test('API는 같은 기기에 대한 동시 수락 중 하나만 확정한다', async (t) => {
   const { post, store } = await setup(t);
-  store.transact((state) => { state.zones.find((z) => z.id === 'z2').layouts = [{ capacity: 1, effectiveWidthM: 3 }]; state.scooters = state.scooters.filter((s) => s.zoneId !== 'z2'); });
-  const replies = await Promise.all(['PM-001', 'PM-002'].map((scooterId) => post({ type: 'accept', scooterId, destinationId: 'z2' })));
+  const replies = await Promise.all([1, 2].map(() => post({ type: 'accept', scooterId: 'PM-001', destinationId: 'exit' })));
   assert.deepEqual(replies.map((r) => r.status).sort(), [200, 409]);
   assert.equal(store.read().missions.length, 1);
 });
@@ -39,7 +38,7 @@ test('데이터베이스 재연결 후 시각과 포인트를 보존한다', asy
 test('잘못된 입력은 JSON 오류로 응답하고 실패한 변경은 롤백한다', async (t) => {
   const { post, store, base } = await setup(t);
   assert.equal((await post({ type: 'advance', minutes: '15' })).status, 400);
-  assert.equal((await post({ type: 'accept', scooterId: 'PM-001', destinationId: 'z2', failUnlock: true })).status, 502);
+  assert.equal((await post({ type: 'accept', scooterId: 'PM-001', destinationId: 'exit', failUnlock: true })).status, 502);
   assert.equal(store.read().missions.length, 0);
   const broken = await fetch(`${base}/api/command`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-PM-Demo': '1' }, body: '{' });
   assert.equal(broken.status, 400);
@@ -68,4 +67,10 @@ test('서비스 앱은 시연 API를 /api/demo 아래에만 두고 서비스 상
   const accepted = await fetch(`${base}/api/demo/command`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-PM-Demo': '1' }, body: JSON.stringify({ type: 'accept', scooterId: demo.offers[0].id, destinationId: demo.offers[0].destinations[0].id }) });
   assert.equal(accepted.status, 200);
   assert.equal((await fetch(`${base}/api/demo/command`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 403);
+  const revision = store.read().revision;
+  const timed = await (await fetch(`${base}/api/demo/zones?at=${encodeURIComponent(new Date().toISOString())}`)).json();
+  assert.equal(timed.zones.length, 6);
+  assert.equal((await fetch(`${base}/api/demo/zones?at=not-a-date`)).status, 400);
+  assert.equal((await fetch(`${base}/api/demo/zones?at=2000-01-01T00:00:00Z`)).status, 400);
+  assert.equal(store.read().revision, revision);
 });
