@@ -2,28 +2,29 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDemo, snapshot, command, zonesAt } from '../server/simulation.mjs';
 import { evaluateZone, distanceM, walkSteps } from '../server/engine.mjs';
-import { demoTowingAreas } from '../server/fixtures.mjs';
+import { demoTowingAreas, towingRules, demoPolicy } from '../server/fixtures.mjs';
 
 function accept(state, scooterId = 'PM-001') {
-  return command(state, { type: 'accept', scooterId, destinationId: 'exit' });
+  const offer = snapshot(state).offers.find((o) => o.id === scooterId);
+  return command(state, { type: 'accept', scooterId, destinationId: offer?.destinations[0].id ?? 'exit' });
 }
 function arrive(state, mission) {
   command(state, { type: 'position', missionId: mission.id, point: mission.target, accuracy: 5, observedAt: state.now });
 }
 const done = (mission, verdict = 'approved') => ({ type: 'complete', missionId: mission.id, verdict, photoPresent: true });
 
-test('견인 구역 안 기기는 구역 경계 바로 밖까지만 옮기면 되고 보상은 한 번만 지급된다', () => {
+test('횡단보도 3m 견인 기기는 3m를 넘게 옮겨야 완료되고 보상은 한 번만 지급된다', () => {
   const state = createDemo();
   const offer = snapshot(state).offers.find((o) => o.id === 'PM-001');
-  assert.equal(offer.destinations.length, 1);
+  assert.equal(offer.reason, '횡단보도 주변(3m)'); assert.equal(offer.destinations.length, 1);
   const [exit] = offer.destinations;
-  const area = demoTowingAreas.find((a) => a.id === exit.towingAreaId);
-  assert.ok(Math.abs(distanceM(exit.point, area.point) - (area.radiusM + state.policy.exitMarginM)) < 0.5);
+  assert.ok(Math.abs(distanceM(exit.point, offer.point) - (3 + state.policy.exitMarginM)) < 0.5);
   const mission = accept(state);
-  command(state, { type: 'position', missionId: mission.id, point: area.point, accuracy: 5, observedAt: state.now });
-  assert.throws(() => command(state, done(mission)), /견인 구역을 벗어난/);
+  assert.equal(mission.clearM, 3);
+  command(state, { type: 'position', missionId: mission.id, point: offer.point, accuracy: 5, observedAt: state.now });
+  assert.throws(() => command(state, done(mission)), /3m 넘게/);
   command(state, { type: 'position', missionId: mission.id, point: mission.target, accuracy: 25, observedAt: state.now });
-  assert.throws(() => command(state, done(mission)), /견인 구역을 벗어난/);
+  assert.throws(() => command(state, done(mission)), /3m 넘게/);
   arrive(state, mission);
   command(state, done(mission)); command(state, done(mission));
   assert.equal(state.points, state.policy.reward);
@@ -47,15 +48,38 @@ test('경로를 따라 끌고 가는 중간 위치는 경보 없이 받고, 마�
   assert.equal(state.missions[0].status, 'completed');
 });
 
-test('미션 대상은 견인 구역 안의 모든 기기이며 기기마다 최단 거리가 다르다', () => {
+test('견인 지점 기기는 실제 견인 사유를 받고, 즉시 견인 사유가 아니면 미션을 내지 않는다', () => {
   const view = snapshot(createDemo());
   const inside = view.scooters.filter((s) => s.towingArea);
-  assert.deepEqual([...new Set(inside.map((s) => s.zoneId))].sort(), ['z1', 'z3', 'z6']);
   assert.equal(inside.length, 13);
-  assert.deepEqual(view.offers.map((o) => o.id).sort(), inside.map((s) => s.id).sort());
-  const exits = view.offers.map((o) => o.destinations[0]);
-  assert.ok(exits.every((d) => d.id === 'exit' && d.distanceM >= 10 && d.distanceM <= 40));
-  assert.ok(new Set(exits.map((d) => d.distanceM)).size > 1);
+  for (const s of inside) assert.ok(Object.hasOwn(demoTowingAreas.find((a) => s.towingArea === a.name).types, s.towingReason));
+  assert.ok(demoTowingAreas.every((a) => Object.keys(a.types).every((reason) => towingRules[reason])));
+  const grace = inside.filter((s) => s.towingKind === 'grace').map((s) => s.id);
+  assert.ok(grace.length > 0);
+  assert.deepEqual(view.offers.map((o) => o.id).sort(), inside.filter((s) => !grace.includes(s.id)).map((s) => s.id).sort());
+  for (const o of view.offers) {
+    const [d] = o.destinations;
+    if (o.rule.kind === 'clear') assert.ok(d.id === 'exit' && d.distanceM === o.rule.clearM + demoPolicy.exitMarginM);
+    else { assert.equal(o.rule.kind, 'protected'); assert.ok(o.operatorPickup && d.designated && d.distanceM > 100); }
+  }
+});
+
+test('보호구역 기기는 운영사 수거 대상이면서 지정 주차구역까지 옮길 수 있고, 도착해야 완료된다', () => {
+  const state = createDemo();
+  const offer = snapshot(state).offers.find((o) => o.rule.kind === 'protected');
+  const [zone] = offer.destinations;
+  assert.throws(() => command(state, { type: 'accept', scooterId: offer.id, destinationId: 'exit' }), /목적지/);
+  const mission = accept(state, offer.id);
+  assert.equal(mission.kind, 'protected');
+  const minutes = (Date.parse(mission.expiresAt) - Date.parse(mission.acceptedAt)) / 60_000;
+  assert.equal(minutes, demoPolicy.deadlineMinutes + Math.ceil(zone.distanceM / demoPolicy.walkMPerMin));
+  command(state, { type: 'position', missionId: mission.id, point: walkSteps(mission.route, 4)[2], accuracy: 8, observedAt: state.now });
+  assert.throws(() => command(state, done(mission)), /지정 주차구역/);
+  for (const point of walkSteps(mission.route, 4)) command(state, { type: 'position', missionId: mission.id, point, accuracy: 8, observedAt: state.now });
+  assert.equal(state.missions[0].alarmed, false);
+  command(state, done(mission));
+  assert.equal(state.missions[0].status, 'completed');
+  assert.deepEqual(state.scooters.find((s) => s.id === offer.id).point, zone.point);
 });
 
 test('중복 수락과 견인 구역 밖 기기 수락을 거절한다', () => {
