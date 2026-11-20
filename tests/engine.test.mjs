@@ -89,19 +89,27 @@ test('겹치거나 이어지는 운영 구간에서는 중간 종료 시각에 �
   assert.equal(result.capacity, 10); assert.equal(result.nextClose, '2026-11-19T03:00:00.000Z');
 });
 
-test('상대 혼잡 규칙은 장소별 상위 10% 시간 폐쇄, 상위 30% 축소, 자료가 부족하면 판정하지 않는다', async () => {
+test('혼잡 규칙은 서울 역·시간 기준선과 비교하고, 숫자를 이유에 담고, 자료가 부족하면 판정하지 않는다', async () => {
   const { evaluateRelative } = await import('../server/engine.mjs');
-  const hourlyCounts = Object.fromEntries(Array.from({ length: 24 }, (_, h) => [h, (h + 1) * 10])); // 23h busiest
-  const zone = { hourlyCounts, layouts: [{ capacity: 10 }, { capacity: 5 }] };
+  const hourlyCounts = Object.fromEntries(Array.from({ length: 24 }, (_, h) => [h, (h + 1) * 10])); // 23h busiest: 240
+  const thresholds = { closeShare: 0.05, reduceShare: 0.15, close: 200, reduce: 150 };
+  const zone = { hourlyCounts, thresholds, layouts: [{ capacity: 10 }, { capacity: 5 }] };
   const at = (h) => `2026-11-20T${String(h).padStart(2, '0')}:30:00+09:00`;
-  assert.equal(evaluateRelative(zone, at(23)).status, 'closed');
-  assert.equal(evaluateRelative(zone, at(21)).status, 'closed'); // top 3 of 24 = ceil(2.4)
-  assert.equal(evaluateRelative(zone, at(20)).status, 'reduced');
-  assert.equal(evaluateRelative(zone, at(20)).capacity, 5);
-  assert.equal(evaluateRelative(zone, at(16)).status, 'reduced'); // top 8 of 24 = ceil(7.2)
-  assert.equal(evaluateRelative(zone, at(15)).status, 'open');
-  assert.equal(evaluateRelative(zone, at(15)).capacity, 10);
+  const closed = evaluateRelative(zone, at(23));
+  assert.equal(closed.status, 'closed'); assert.equal(closed.crowdRank, 1);
+  assert.match(closed.reason, /240명.*1번째.*상위 5% 기준 200명 이상/);
+  assert.equal(evaluateRelative(zone, at(19)).status, 'closed'); // 200 = close cut-off
+  const reduced = evaluateRelative(zone, at(18));
+  assert.equal(reduced.status, 'reduced'); assert.equal(reduced.capacity, 5); assert.match(reduced.reason, /190명.*상위 15% 기준 150명 이상.*5대/);
+  assert.equal(evaluateRelative(zone, at(14)).status, 'reduced'); // 150 = reduce cut-off
+  const open = evaluateRelative(zone, at(13));
+  assert.equal(open.status, 'open'); assert.equal(open.capacity, 10); assert.match(open.reason, /140명.*150명보다 적어/);
+  // A quiet place stays open even at its own busiest hour.
+  assert.equal(evaluateRelative({ ...zone, thresholds: { ...thresholds, close: 1000, reduce: 500 } }, at(23)).status, 'open');
+  assert.equal(evaluateRelative({ ...zone, layouts: [{ capacity: 10 }] }, at(18)).status, 'open');
   assert.equal(evaluateRelative({ ...zone, hourlyCounts: { 8: 100 } }, at(8)).status, 'unknown');
   const { 9: _gap, ...missing } = hourlyCounts;
   assert.equal(evaluateRelative({ ...zone, hourlyCounts: missing }, at(9)).status, 'unknown');
+  assert.equal(evaluateRelative({ ...zone, thresholds: undefined }, at(23)).status, 'unknown');
+  assert.equal(evaluateRelative({ ...zone, thresholds: { ...thresholds, close: 100 } }, at(23)).status, 'unknown'); // close below reduce
 });

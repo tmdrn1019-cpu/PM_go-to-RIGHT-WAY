@@ -33,12 +33,31 @@ test('hotspot zones snap to designated zones, need a busy station and never repe
   const at = (h) => publicZonesAt(zones, `2026-11-20T${String(h).padStart(2, '0')}:30:00+09:00`)[0];
   assert.equal(at(23).status, 'closed'); assert.equal(at(18).status, 'reduced'); assert.equal(at(18).capacity, 5);
   assert.equal(at(3).status, 'open'); assert.equal(at(3).crowdCount, 400); assert.equal(at(3).available, null);
+  // 48 station-hours (역삼 100..2400, 한적 1 each): top 5% = 3rd = 2200, top 15% = 8th = 1700.
+  assert.deepEqual([zones[0].thresholds.close, zones[0].thresholds.reduce, zones[0].thresholds.stationHours], [2200, 1700, 48]);
+  assert.equal(at(21).status, 'closed'); assert.equal(at(20).status, 'reduced'); assert.equal(at(15).status, 'open');
+});
+
+test('sidewalk evidence uses the nearest surveyed spot within 300m and never changes the verdict', () => {
+  const stations = stationProfiles(master, rides, 30);
+  const near = { id: 's1', name: '근처 지점', point: [37.5013, 127.0366], widthM: 3, walkway: '보도전용', obstacle: '가로수', hourly: { 8: 900, 18: 2580, 19: 2580, 20: 'x' } };
+  const far = { id: 's2', name: '먼 지점', point: [37.51, 127.05], widthM: 10, hourly: { 18: 99999 } };
+  const zones = buildHotspotZones({ areas, designated, stations, period: 'p', month: 'm', sidewalk: [far, near, { ...near, id: 's3', widthM: 0 }] });
+  const s = zones[0].basis.sidewalk;
+  // 2580/60/3 = 14.3 (A); width left 1.8m -> 23.9 (B); ties pick the earlier hour.
+  assert.deepEqual([s.spotName, s.peakHour, s.peakCount, s.flow, s.los, s.remainingWidthM, s.parkedFlow, s.parkedLos], ['근처 지점', 18, 2580, 14.3, 'A', 1.8, 23.9, 'B']);
+  assert.ok(s.distanceM < 300);
+  const plain = buildHotspotZones({ areas, designated, stations, period: 'p', month: 'm' });
+  assert.equal(plain[0].basis.sidewalk, null);
+  const at = '2026-11-20T23:30:00+09:00';
+  assert.equal(publicZonesAt(zones, at)[0].status, publicZonesAt(plain, at)[0].status);
+  assert.equal(buildHotspotZones({ areas, designated, stations, period: 'p', month: 'm', sidewalk: [far] })[0].basis.sidewalk, null);
 });
 
 test('zones API serves the built file, rejects bad times and reports a missing or old file', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'zones-')); const file = join(dir, 'public-zones.json');
   const zones = buildHotspotZones({ areas, designated, stations: stationProfiles(master, rides, 30), period: 'p', month: 'm' });
-  writeFileSync(file, JSON.stringify({ version: 3, builtAt: 'b', month: 'm', zones }));
+  writeFileSync(file, JSON.stringify({ version: 4, builtAt: 'b', month: 'm', zones }));
   const server = createServiceApp({ feedPath: '', publicData: { apiKey: '' }, publicZonesFile: file }).listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(async () => { await new Promise((resolve) => server.close(resolve)); rmSync(dir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -46,5 +65,5 @@ test('zones API serves the built file, rejects bad times and reports a missing o
   assert.equal(body.status, 'ready'); assert.equal(body.zones.length, 1);
   assert.equal((await fetch(`${base}/api/zones?at=nope`)).status, 400);
   assert.equal(readPublicZones(join(dir, 'missing.json')).status, 'unconfigured');
-  writeFileSync(file, JSON.stringify({ version: 2, zones })); assert.equal(readPublicZones(file).status, 'error');
+  writeFileSync(file, JSON.stringify({ version: 3, zones })); assert.equal(readPublicZones(file).status, 'error');
 });

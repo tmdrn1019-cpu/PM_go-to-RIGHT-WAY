@@ -5,6 +5,9 @@ export const LOS_REFERENCE = {
   unit: '명/분/m',
 };
 
+// LOS letter for a flow in 명/분/m; shared by the zone engine and the sidewalk evidence.
+export const losGrade = (flow, profile = LOS_REFERENCE) => { const grade = profile.bounds.findIndex((bound) => flow <= bound + 1e-9); return 'ABCDEF'[grade < 0 ? 5 : grade]; };
+
 const MINUTE = 60_000;
 const DAY = 1440 * MINUTE;
 const OFFSET = 540 * MINUTE;
@@ -73,10 +76,10 @@ export function evaluateZone(zone, at, profile) {
   if (!layouts.length) return { ...result, status: 'closed', reason: '주차 후 유효폭 2m를 확보하는 배치가 없습니다.' };
   const base = layouts.at(-1);
   const flow = count / 15 / base.effectiveWidthM;
-  const grade = profile.bounds.findIndex((bound) => flow <= bound + 1e-9);
   result.flow = flow;
-  result.los = 'ABCDEF'[grade < 0 ? 5 : grade];
-  if (grade < 0 || grade >= 4) return { ...result, status: 'closed', reason: `${result.los}등급: 혼잡 시간 반납을 제한합니다.` };
+  result.los = losGrade(flow, profile);
+  const grade = 'ABCDEF'.indexOf(result.los);
+  if (grade >= 4) return { ...result, status: 'closed', reason: `${result.los}등급: 혼잡 시간 반납을 제한합니다.` };
 
   let selected = base;
   result.status = 'open';
@@ -117,20 +120,26 @@ export function distanceToRouteM(point, route) {
   }));
 }
 
-// User policy (2026-11-20): public data never reaches LOS D, so towing-hotspot zones follow each place's own
-// hourly profile instead. Busiest 10% of hours close, the next 20% (top 30%) reduce to the smaller layout.
-export const RELATIVE_POLICY = { closeShare: 0.1, reduceShare: 0.3 };
-export function evaluateRelative(zone, at, policy = RELATIVE_POLICY) {
+// User policy (2026-11-20): public data never reaches LOS D, so hotspot zones compare this hour's station ridership
+// with Seoul-wide station-hour cut-offs (zone.thresholds, built from every station's hourly profile) and say which numbers decided.
+export const RELATIVE_POLICY = { closeShare: 0.05, reduceShare: 0.15 };
+// Nearest-rank cut-off: the value reached by the busiest share of a descending list.
+export const shareCutoff = (descending, share) => descending[Math.max(0, Math.ceil(descending.length * share) - 1)];
+export function evaluateRelative(zone, at) {
   const time = new Date(at).getTime();
   const counts = Object.values(zone.hourlyCounts ?? {}).filter((n) => Number.isFinite(n) && n >= 0).sort((a, b) => b - a);
   const hour = new Date(time + OFFSET).getUTCHours();
   const count = zone.hourlyCounts?.[hour];
   const capacities = (zone.layouts ?? []).map((l) => l.capacity).filter((c) => Number.isInteger(c) && c > 0).sort((a, b) => b - a);
-  const base = { status: 'unknown', capacity: 0, los: null, flow: null, effectiveWidthM: null, nextClose: null, currentPedestrianCount15Min: Number.isFinite(count) ? count : null, reason: '이 시간대 보행량 자료가 없어 판정하지 않습니다.' };
-  if (!Number.isFinite(time) || !Number.isFinite(count) || count < 0 || counts.length < 10 || !capacities.length) return base;
-  // Nearest-rank cut-offs: the count reached by the busiest share of this zone's hours.
-  const cut = (share) => counts[Math.max(0, Math.ceil(counts.length * share) - 1)];
-  if (count >= cut(policy.closeShare)) return { ...base, status: 'closed', reason: `이 장소에서 가장 붐비는 시간대(상위 ${Math.round(policy.closeShare * 100)}%)라 반납을 닫습니다.` };
-  if (count >= cut(policy.reduceShare) && capacities.length > 1) return { ...base, status: 'reduced', capacity: capacities.at(-1), reason: `붐비는 시간대(상위 ${Math.round(policy.reduceShare * 100)}%)라 수용 대수를 줄입니다.` };
-  return { ...base, status: 'open', capacity: capacities[0], reason: '이 장소 평소 수준의 보행량이라 개방합니다.' };
+  const t = zone.thresholds;
+  const base = { status: 'unknown', capacity: 0, los: null, flow: null, effectiveWidthM: null, nextClose: null, crowdRank: null, currentPedestrianCount15Min: Number.isFinite(count) ? count : null, reason: '이 시간대 보행량 자료나 서울 기준선이 없어 판정하지 않습니다.' };
+  const thresholdsOk = Number.isFinite(t?.close) && Number.isFinite(t?.reduce) && t.reduce > 0 && t.close >= t.reduce && t.closeShare > 0 && t.reduceShare >= t.closeShare;
+  if (!Number.isFinite(time) || !Number.isFinite(count) || count < 0 || counts.length < 10 || !capacities.length || !thresholdsOk) return base;
+  const n = (v) => v.toLocaleString('ko-KR');
+  const pct = (share) => Math.round(share * 1000) / 10;
+  const crowdRank = counts.indexOf(count) + 1; // ties share the busier rank
+  const now = `이 시간 승하차는 ${n(count)}명(일평균, 이 장소 하루 중 ${crowdRank}번째)으로`;
+  if (count >= t.close) return { ...base, crowdRank, status: 'closed', reason: `${now} 서울 역·시간 상위 ${pct(t.closeShare)}% 기준 ${n(t.close)}명 이상이라 반납을 닫습니다.` };
+  if (count >= t.reduce && capacities.length > 1) return { ...base, crowdRank, status: 'reduced', capacity: capacities.at(-1), reason: `${now} 서울 역·시간 상위 ${pct(t.reduceShare)}% 기준 ${n(t.reduce)}명 이상이라 수용 대수를 ${capacities.at(-1)}대로 줄입니다. 폐쇄 기준은 ${n(t.close)}명입니다.` };
+  return { ...base, crowdRank, status: 'open', capacity: capacities[0], reason: count >= t.reduce ? `${now} 축소 기준 ${n(t.reduce)}명 이상이지만 줄일 배치가 없어 개방합니다.` : `${now} 서울 역·시간 상위 ${pct(t.reduceShare)}% 기준 ${n(t.reduce)}명보다 적어 개방합니다.` };
 }

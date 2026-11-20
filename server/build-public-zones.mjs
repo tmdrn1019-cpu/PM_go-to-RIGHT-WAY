@@ -1,7 +1,7 @@
 // npm run build:zones -- <towing source .jsonl>
 // Writes data/public-zones.json: Seoul-designated PM parking zones next to the busiest 2025 towing hotspots,
 // judged by the nearest subway station's hourly ridership.
-import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
 import { aggregateTowing } from './towing.mjs';
 import { collectGeocodes } from './sgis.mjs';
 import { createSeoulData, boundedJson } from './seoul-data.mjs';
@@ -38,11 +38,15 @@ try {
   if (!rides) throw new Error('지하철 시간대별 승하차 자료를 받지 못했습니다.');
   const days = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(4)), 0)).getUTCDate();
   const stations = stationProfiles(await seoul('subwayStationMaster', '1/1000/'), rides, days);
-  const zones = buildHotspotZones({ areas: towing.areas, designated, stations, period, month });
+  // Optional evidence from npm run convert:sidewalk; zones are still built without it.
+  const sidewalk = existsSync('data/sidewalk-2015.json') ? JSON.parse(readFileSync('data/sidewalk-2015.json', 'utf8')).spots : [];
+  if (!sidewalk.length) console.warn('data/sidewalk-2015.json이 없어 보도 실측 근거 없이 만듭니다.');
+  const zones = buildHotspotZones({ areas: towing.areas, designated, stations, period, month, sidewalk });
   mkdirSync('data', { recursive: true });
   const temporary = `data/public-zones.json.${process.pid}.tmp`;
-  writeFileSync(temporary, JSON.stringify({ version: 3, builtAt: new Date().toISOString(), period, month, zones }, null, 2));
+  writeFileSync(temporary, JSON.stringify({ version: 4, builtAt: new Date().toISOString(), period, month, zones }, null, 2));
   renameSync(temporary, 'data/public-zones.json');
+  if (zones[0]) console.log(`서울 기준선 (역 ${zones[0].thresholds.stations}곳 · 역·시간 ${zones[0].thresholds.stationHours}개): 폐쇄 ${zones[0].thresholds.close}명 이상 · 축소 ${zones[0].thresholds.reduce}명 이상`);
   console.log(`지정 주차구역 ${designated.length}/${parking.records.length}곳 좌표 · 역 ${stations.length}곳 · 존 ${zones.length}곳`);
-  for (const z of zones) console.log(`${z.name} (${z.address}) · 견인 ${z.basis.towingCount}건 · 다발 지점 ${z.basis.hotspotDistanceM}m · ${z.basis.stationName}역 ${z.basis.stationDistanceM}m`);
+  for (const z of zones) console.log(`${z.name} (${z.address}) · 견인 ${z.basis.towingCount}건 · 다발 지점 ${z.basis.hotspotDistanceM}m · ${z.basis.stationName}역 ${z.basis.stationDistanceM}m · 2015 보도 ${z.basis.sidewalk ? `${z.basis.sidewalk.distanceM}m 폭 ${z.basis.sidewalk.widthM}m LOS ${z.basis.sidewalk.los}/${z.basis.sidewalk.parkedLos ?? '-'}` : '없음'}`);
 } catch (error) { console.error(error.message); process.exitCode = 1; }
