@@ -16,7 +16,7 @@
 npm run build:zones -- data/towing-source-12968.jsonl
 ```
 
-필요한 것은 서버 환경변수 `SEOUL_OPEN_DATA_KEY`, `SGIS_SERVICE_ID`, `SGIS_SECURITY_KEY`이다. 견인 원본은 `npm run sync:towing`이 남긴 비공개 JSONL이다. 지정 주차구역(`parkingKickboard`), 역 좌표(`subwayStationMaster`), 역별 시간대 승하차(`CardSubwayTime`, 공개된 최근 달)는 실행할 때 서울시 API로 받는다. 좌표는 `data/towing-geocodes.json`과 `data/parking-geocodes.json`에 캐시한다. 결과는 비공개 `data/public-zones.json`(또는 `PUBLIC_ZONES_FILE`, `version: 4`, 존마다 `thresholds` 포함)에 원자적으로 쓴다.
+필요한 것은 서버 환경변수 `SEOUL_OPEN_DATA_KEY`, `SGIS_SERVICE_ID`, `SGIS_SECURITY_KEY`이다. 견인 원본은 `npm run sync:towing`이 남긴 비공개 JSONL이다. 지정 주차구역(`parkingKickboard`), 역 좌표(`subwayStationMaster`), 역별 시간대 승하차(`CardSubwayTime`, 공개된 최근 달)는 실행할 때 서울시 API로 받는다. 좌표는 `data/towing-geocodes.json`과 `data/parking-geocodes.json`에 캐시한다. 결과는 비공개 `data/public-zones.json`(또는 `PUBLIC_ZONES_FILE`, `version: 5`, 존마다 `thresholds` 포함)에 원자적으로 쓴다. v5는 좌표가 확인된 지정 주차구역 전체(`designated`)와 좌표가 확인된 서울 견인 상위 주소(`towingHotspots`)도 담는다. 옛 v4 파일은 읽지 않으므로 다시 빌드한다.
 
 보도 실측 근거를 넣으려면 먼저 `npm run convert:sidewalk`를 실행한다(Python, `openpyxl`·`pyproj` 필요). 이 명령은 비공개 `data/zone-source/spots-2015/spots-2015.xlsx`([조사지점정보 OA-21707](https://data.seoul.go.kr/dataList/OA-21707/F/1/datasetView.do), 2026-11-20 내려받음)와 `data/zone-source/footfall-2015.xlsx`([관찰조사 OA-21705](https://data.seoul.go.kr/dataList/OA-21705/F/1/datasetView.do))를 읽어 `data/sidewalk-2015.json`을 만든다. 두 데이터셋은 열린데이터광장에서 종료 서비스로 표시되어 있다. 파일이 없으면 존은 근거 없이 만들어진다.
 
@@ -42,6 +42,17 @@ npm run build:zones -- data/towing-source-12968.jsonl
 | 판정 | 그 시간 승하차가 폐쇄 기준 이상이면 **폐쇄**, 축소 기준 이상이면 **축소**(5대), 아니면 **개방**(10대). 5%·15%는 가정이다. 판정 이유에 그 시간 승하차, 적용 기준선, 그 장소 하루 중 순위를 표시한다 |
 | 주차 대수 | 운영사 자료가 필요해 `null`. 화면은 수용 정원만 표시 |
 | 보도 실측(참고) | 존에서 300m 안의 가장 가까운 2015 유동인구조사 지점(1,217곳, 좌표 EPSG:5181→WGS84). 평일 본조사 07~20시 시간별 평균 중 첨두 1시간의 인원 ÷ 60 ÷ 조사 보도 폭 = 1시간 평균 보행류율과 LOS, 그리고 기기 깊이 1.2m(가정)를 뺀 폭으로 다시 계산한 값. **판정에는 쓰지 않는다** |
+
+## 지정 구역 전체와 견인 위험 합성 PM (사용자 요청 2026-11-20)
+
+동적 존이 20곳뿐이라 지도에 두 층을 더한다. 설계는 `docs/superpowers/specs/2026-11-20-designated-and-risk-pm-design.md`를 따른다.
+
+- **지정 구역:** `GET /api/zones`의 `designated`. 동적 존으로 쓰인 구역은 빼고 회색 사각으로 그린다. 운영 상태는 없다(2026-11-20 빌드에서 251곳 중 231곳).
+- **합성 PM:** `GET /api/zones/synthetic-pm`(`synthetic: true`). 서울은 TAGO PM 위치를 제공하지 않아 시연용 기기를 만든다(`server/public-zones.mjs`의 `syntheticFleet`, `SYNTHETIC_RULES`). 배치 규칙은 다음과 같다.
+  - 견인 상위 50개 주소마다 견인 40건당 1대(1~6대)를 대표점 80m 안에 둔다. 주소 문자열을 시드로 써서 같은 입력이면 같은 배치가 나온다.
+  - 지정 구역 3곳마다 1대를 둔다.
+- **견인 위험:** 기기가 아무 견인 주소 대표점에서 30m 안에 있으면 견인 위험이다(지정 구역에 세운 기기는 정상 주차라 제외). 30m는 모바일 시연의 견인 구역 반경을 그대로 쓴 **가정**이며 법적 반납금지 경계가 아니다. 2026-11-20 빌드에서 261대 중 59대가 위험이다.
+- **화면 규칙:** 합성 PM은 이동 미션과 연결하지 않는다. 실제 TAGO 기기와 섞이지 않게 'PM 위치'·'견인 분석' 화면에서는 숨긴다.
 
 ## 남은 한계
 

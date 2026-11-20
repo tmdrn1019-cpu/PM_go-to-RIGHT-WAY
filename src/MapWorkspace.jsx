@@ -55,7 +55,7 @@ function useZonePlayback() {
     const controller = new AbortController();
     fetch(`/api/zones?at=${encodeURIComponent(new Date(clock).toISOString())}`, { cache: 'no-store', signal: controller.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('zones'))))
-      .then((next) => { setData({ status: next.status, zones: next.zones, generatedAt: next.at, month: next.month }); setConnection('online'); })
+      .then((next) => { setData({ status: next.status, zones: next.zones, designated: next.designated ?? [], generatedAt: next.at, month: next.month }); setConnection('online'); })
       .catch(() => { if (!controller.signal.aborted) { setData(null); setConnection('offline'); } });
     return () => controller.abort();
   }, [clock]);
@@ -78,6 +78,14 @@ export default function MapWorkspace() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [vehicles, setVehicles] = useState([]);
   const [towingAreas, setTowingAreas] = useState([]);
+  // Synthetic demo devices are fixed for a given build, so one fetch is enough.
+  const [synthetic, setSynthetic] = useState(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/zones/synthetic-pm', { cache: 'no-store', signal: controller.signal }).then((r) => (r.ok ? r.json() : Promise.reject(new Error('synthetic'))))
+      .then((next) => { if (!next.synthetic || !Array.isArray(next.vehicles)) throw new Error('invalid'); setSynthetic(next); }).catch(() => { if (!controller.signal.aborted) setSynthetic({ failed: true, vehicles: [] }); });
+    return () => controller.abort();
+  }, []);
   const receiveTowing = useCallback((next, move = false) => { setTowingAreas(next); if (move) setFocus({ points: next.map(row => row.point) }); }, []);
   const receiveVehicles = useCallback((next, move = false) => { setVehicles(next); if (move) setFocus({ points: next.map(row => row.point) }); }, []);
   const bottomFraction = mobile ? expanded ? 0.55 : 0.35 : 0;
@@ -86,6 +94,10 @@ export default function MapWorkspace() {
   const visibleZones = filterZones(zones, { query, vehicleType, statuses: layers, bounds: boundsOnly ? bounds : null, origin: position?.point });
   const mapZones = filterZones(zones, { query, vehicleType, statuses: layers });
   const selected = zones.find((zone) => zone.id === selectedId);
+  // Real TAGO devices and towing analysis get the map to themselves so synthetic devices never mix with real ones.
+  const overlay = !['fleet', 'towing'].includes(view);
+  const riskVehicles = (synthetic?.vehicles ?? []).filter((v) => v.risk).sort((a, b) => a.risk.distanceM - b.risk.distanceM || a.id.localeCompare(b.id));
+  const syntheticMarkers = (synthetic?.vehicles ?? []).map((v) => ({ id: v.id, point: v.point, alert: Boolean(v.risk), label: v.risk ? `합성 ${v.id} · 견인 위험 · ${v.risk.address}에서 ${v.risk.distanceM}m (실제 기기 아님)` : `합성 ${v.id} · 견인 주소 ${synthetic.riskRadiusM}m 밖 (실제 기기 아님)` }));
   const onBoundsChange = useCallback((next) => setBounds(next), []);
   const select = useCallback((id) => { setSelectedId(id); setFocus(null); setView('zones'); setExpanded(true); }, []);
   const switchView = (next) => { if (view === 'fleet' || view === 'towing') setFocus({ points: [] }); setView(next); setSelectedId(null); setExpanded(true); };
@@ -108,11 +120,18 @@ export default function MapWorkspace() {
       <Button label="지금으로" size="sm" variant="ghost" onClick={resetClock} />
     </HStack>
   </VStack>;
-  const menu = [['help', '이용 안내', '상태 표시와 위치 정보 사용'], ['status', '판정 시계', '재생 속도와 판정 시각'], ['towing', '견인 분석', '견인 다발 주소와 후보지'], ['fleet', 'PM 위치', '공식 기기 위치 조회'], ['public', '공공데이터', '공식 주차구역·보행 관측']];
+  const menu = [['help', '이용 안내', '상태 표시와 위치 정보 사용'], ['status', '판정 시계', '재생 속도와 판정 시각'], ['towing', '견인 분석', '견인 다발 주소와 후보지'], ['fleet', 'PM 위치', '공식 기기 위치 조회'], ['public', '공공데이터', '공식 주차구역·보행 관측'], ['risk', '견인 위험 PM', '합성 시연 기기 중 견인 주소 근처 기기']];
   const panelTitle = selected ? selected.name : view === 'zones' ? '주차존 찾기' : view === 'menu' ? '메뉴' : menu.find(([id]) => id === view)?.[1];
   const nav = <HStack gap={2}>{(view !== 'zones' || selected) && <Button label="주차존으로" size="sm" variant="ghost" onClick={() => switchView('zones')} />}{view !== 'menu' && <Button label="메뉴" size="sm" variant="secondary" onClick={() => switchView('menu')} />}</HStack>;
   const filters = <VStack gap={3}><TextInput label="주차존 이름·주소 검색" value={query} onChange={(value) => { setQuery(value); setSelectedId(null); }} hasClear placeholder="주차존 이름 또는 주소" /><Selector label="기기 종류" value={vehicleType} onChange={(value) => { setVehicleType(value); setSelectedId(null); }} options={[{ value: 'all', label: '전체 기기' }, { value: 'scooter', label: '킥보드' }, { value: 'ebike', label: '전기자전거' }]} /></VStack>;
-  const body = selected ? <ZoneDetails zone={selected} /> : view === 'menu' ? <VStack gap={0}>{menu.map(([id, label, hint]) => <VStack key={id} gap={1} paddingBlock={3} style={{ borderBottom: 'var(--border-width) solid var(--color-border)' }}><Button label={label} variant="ghost" onClick={() => switchView(id)} /><Text type="supporting">{hint}</Text></VStack>)}</VStack> : ['towing','fleet'].includes(view) ? <ExternalDataPanel key={view} kind={view} onVehicles={receiveVehicles} onTowing={receiveTowing} /> : view === 'public' ? <PublicDataPanel /> : view === 'status' ? <VStack gap={5}>
+  const body = selected ? <ZoneDetails zone={selected} /> : view === 'menu' ? <VStack gap={0}>{menu.map(([id, label, hint]) => <VStack key={id} gap={1} paddingBlock={3} style={{ borderBottom: 'var(--border-width) solid var(--color-border)' }}><Button label={label} variant="ghost" onClick={() => switchView(id)} /><Text type="supporting">{hint}</Text></VStack>)}</VStack> : ['towing','fleet'].includes(view) ? <ExternalDataPanel key={view} kind={view} onVehicles={receiveVehicles} onTowing={receiveTowing} /> : view === 'public' ? <PublicDataPanel /> : view === 'risk' ? <VStack gap={4}>
+    <Text type="label">합성 시연 자료 · 실제 기기 아님</Text>
+    <Text type="supporting">서울은 공식 PM 위치 자료(TAGO)가 없어, {synthetic?.period ?? '2025년'} 서울 견인 상위 주소 주변과 서울시 지정 주차구역에 시연용 기기를 만들어 놓았습니다. 견인 주소 대표점에서 {synthetic?.riskRadiusM ?? 30}m 안이면 견인 위험으로 표시합니다. 반경은 가정이며 법적 반납금지 경계가 아닙니다.</Text>
+    {!synthetic ? <Text>합성 기기를 불러오고 있어요.</Text> : synthetic.failed || synthetic.status !== 'ready' ? <Text>합성 기기를 불러오지 못했습니다. 공공데이터 존 자료(npm run build:zones)를 확인해 주세요.</Text> : <>
+      <Text>합성 기기 {synthetic.vehicles.length}대 중 견인 위험 {riskVehicles.length}대</Text>
+      <VStack gap={0}>{riskVehicles.map((v) => <VStack key={v.id} paddingBlock={3} gap={1} style={{ borderBottom: 'var(--border-width) solid var(--color-border)' }}><HStack hAlign="between" vAlign="center" gap={2}><Button label={`${v.id} · ${v.risk.distanceM}m`} variant="ghost" size="sm" onClick={() => setFocus({ point: v.point })} /><Text type="label" style={{ color: colors.closed }}>견인 위험</Text></HStack><Text type="supporting">{v.risk.address} · 2025 견인 {v.risk.towingCount}건</Text></VStack>)}</VStack>
+    </>}
+  </VStack> : view === 'status' ? <VStack gap={5}>
     {clockControls}<Text>주차존 {zones.length}곳 · 개방 {zones.filter((z) => z.status === 'open').length}곳 · 축소 {zones.filter((z) => z.status === 'reduced').length}곳 · 폐쇄 {zones.filter((z) => z.status === 'closed').length}곳</Text>
     <Text type="supporting">2025년 서울 견인 다발 지점에서 500m 안에 있는 서울시 지정 PM 주차구역 중, 인근 지하철역 승하차가 서울 역 중앙값 이상이고 견인이 많은 20곳입니다. 인근 역의 시간대별 승하차(일평균)에서 그 장소가 가장 붐비는 10% 시간은 폐쇄, 상위 30% 시간은 축소합니다. 주차 대수는 운영사 연동 후 표시합니다. 시민 이동 미션은 모바일 화면에서 시연합니다.</Text>
   </VStack> : view === 'help' ? <VStack gap={5}>
@@ -127,13 +146,13 @@ export default function MapWorkspace() {
     <HStack height="100%" gap={0} style={{ minHeight: 0, position: 'relative', overflow: 'hidden' }}>
       {!mobile && <VStack as="aside" width="24rem" height="100%" gap={0} style={{ flexShrink: 0, borderInlineEnd: 'var(--border-width) solid var(--color-border)', background: 'var(--color-background-surface)' }} aria-label="주차존 탐색 패널"><HStack padding={5} hAlign="between" vAlign="center" gap={2}><Heading level={3} accessibilityLevel={1}>{panelTitle}</Heading>{nav}</HStack><Divider /><VStack key={selected?.id ?? view} padding={5} gap={4} isScrollable style={{ flex: 1, minHeight: 0 }}>{body}</VStack></VStack>}
       <VStack height="100%" style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
-        <ZoneMap zones={mapZones} vehicles={vehicles} towingAreas={towingAreas} selectedId={selectedId} onSelect={select} onBoundsChange={onBoundsChange} focus={focus} position={position} bottomFraction={bottomFraction} />
+        <ZoneMap zones={mapZones} vehicles={overlay ? [...vehicles, ...syntheticMarkers] : vehicles} designated={overlay ? data?.designated ?? [] : []} towingAreas={towingAreas} selectedId={selectedId} onSelect={select} onBoundsChange={onBoundsChange} focus={focus} position={position} bottomFraction={bottomFraction} />
         <VStack gap={2} style={{ position: 'absolute', top: 'var(--spacing-4)', left: 'var(--spacing-4)', zIndex: 2, maxWidth: mobile ? 'calc(100% - 5rem)' : '24rem' }}>
           <VStack padding={3} gap={1} style={surface}>{view === 'fleet' ? <Text type="label">PM 위치 · TAGO</Text> : view === 'towing' ? <><Text type="label">견인 이력 · 주소별 분석</Text><Text type="supporting">원의 크기 = 견인 건수 · 주소 대표점</Text></> : clockControls}</VStack>
           {!(mobile && selected) && <HStack gap={2} wrap="wrap"><Button label={locating ? '위치 확인 중' : '내 위치'} isLoading={locating} onClick={() => setLocationConsent(true)} elevation="low" /><Button label="전체 존" onClick={() => setFocus({ points: zones.map((zone) => zone.point) })} elevation="low" /></HStack>}
           {locationStatus && <VStack padding={3} style={surface}><Text role="status">{locationStatus}</Text><Button label="위치 안내 닫기" size="sm" variant="ghost" onClick={() => setLocationStatus('')} /></VStack>}
         </VStack>
-        {!mobile && <VStack padding={3} style={{ ...surface, position: 'absolute', bottom: 'var(--spacing-5)', left: 'var(--spacing-5)', zIndex: 2 }}><HStack gap={4}>{view === 'towing' && <Text type="label">견인 건수별 주소 위치 · 금지 경계 아님</Text>}{(view === 'towing' ? [] : Object.keys(statuses)).map((status) => <Text key={status} type="label" style={{ color: colors[status] }}>{statuses[status]}</Text>)}</HStack></VStack>}
+        {!mobile && <VStack padding={3} style={{ ...surface, position: 'absolute', bottom: 'var(--spacing-5)', left: 'var(--spacing-5)', zIndex: 2, maxWidth: 'calc(100% - 2 * var(--spacing-5))' }}><HStack gap={4} wrap="wrap">{view === 'towing' && <Text type="label">견인 건수별 주소 위치 · 금지 경계 아님</Text>}{(view === 'towing' ? [] : Object.keys(statuses)).map((status) => <Text key={status} type="label" style={{ color: colors[status] }}>{statuses[status]}</Text>)}{overlay && <><Text type="label" color="secondary">■ 지정 구역(상태 없음)</Text><Text type="label">● 합성 PM</Text><Text type="label" style={{ color: colors.closed }}>◉ 견인 위험(합성)</Text></>}</HStack></VStack>}
       </VStack>
       {mobile && <VStack as="aside" aria-label="시민용 탐색 패널" gap={0} style={{ ...surface, position: 'absolute', insetInline: 0, bottom: 0, zIndex: 3, maxHeight: `${bottomFraction * 100}%`, paddingBottom: 'env(safe-area-inset-bottom)', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}>
         <VStack padding={3} gap={2}><HStack hAlign="between" vAlign="center" gap={2}><Heading level={3} accessibilityLevel={1}>{panelTitle}</Heading><Button label={expanded ? '줄이기' : '펼치기'} size="sm" variant="ghost" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)} /></HStack>{nav}</VStack>

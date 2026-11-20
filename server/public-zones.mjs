@@ -94,14 +94,42 @@ export function buildHotspotZones({ areas, designated, stations, period, month, 
       basis: { towingCount, addressCount, period, spacingM: rules.spacingM, hotspotAddress: seed.address, hotspotDistanceM: Math.round(zone.distanceM), stationName: station.name, stationDistanceM: Math.round(station.distanceM), month, sidewalk: sidewalkEvidence(zone.point, sidewalk) } }));
 }
 
+// Synthetic demo devices (user choice 2026-11-20): Seoul has no public PM positions, so devices are scattered around real
+// towing addresses. riskRadiusM reuses the mobile demo's towing-area radius; it is an assumption, not a legal no-parking boundary.
+export const SYNTHETIC_RULES = { hotspots: 50, perCount: 40, maxPerHotspot: 6, spreadM: 80, riskRadiusM: 30, designatedEvery: 3 };
+function seededRandom(text) {
+  let a = 0; for (const c of String(text)) a = Math.imul(a ^ c.charCodeAt(0), 2654435761);
+  return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+const offset = ([lat, lng], meters, angle) => [lat + meters * Math.cos(angle) / 111_195, lng + meters * Math.sin(angle) / (111_195 * Math.cos(lat * Math.PI / 180))];
+export function syntheticFleet({ hotspots, designated, rules = SYNTHETIC_RULES }) {
+  const spots = hotspots.filter((h) => Array.isArray(h.point)).sort((a, b) => b.count - a.count);
+  const placed = [];
+  for (const h of spots.slice(0, rules.hotspots)) {
+    const random = seededRandom(h.address);
+    const n = Math.min(rules.maxPerHotspot, Math.max(1, Math.ceil(h.count / rules.perCount)));
+    for (let i = 0; i < n; i++) placed.push({ point: offset(h.point, random() * rules.spreadM, random() * 2 * Math.PI), designatedId: null });
+  }
+  designated.forEach((d, i) => { if (i % rules.designatedEvery === 0) placed.push({ point: d.point, designatedId: d.id }); });
+  // A device parked in a designated zone is legally parked, so it is never a towing risk even next to a towing address.
+  return placed.map((v, i) => ({ id: `SIM-${String(i + 1).padStart(4, '0')}`, point: v.point, designatedId: v.designatedId, risk: v.designatedId ? null : towingRisk(v.point, spots, rules.riskRadiusM) }));
+}
+export function towingRisk(point, hotspots, radiusM = SYNTHETIC_RULES.riskRadiusM) {
+  const near = nearest(point, hotspots.filter((h) => Array.isArray(h.point)), radiusM);
+  return near ? { address: near.address, district: near.district ?? null, towingCount: near.count, distanceM: Math.round(near.distanceM) } : null;
+}
+
+const validPoint = (p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite);
 export function readPublicZones(file = process.env.PUBLIC_ZONES_FILE || 'data/public-zones.json') {
   try {
-    check(statSync(file).size <= 1024 * 1024, 'size');
+    check(statSync(file).size <= 2 * 1024 * 1024, 'size');
     const data = JSON.parse(readFileSync(file, 'utf8'));
-    check(data.version === 4 && Array.isArray(data.zones) && data.zones.length > 0 && data.zones.length <= 200, 'shape');
+    check(data.version === 5 && Array.isArray(data.zones) && data.zones.length > 0 && data.zones.length <= 200 && Array.isArray(data.designated) && data.designated.length <= 2000 && Array.isArray(data.towingHotspots) && data.towingHotspots.length <= 2000, 'shape');
     for (const z of data.zones) check(typeof z.id === 'string' && Array.isArray(z.point) && Array.isArray(z.boundary) && Array.isArray(z.layouts) && z.layouts.length && z.hourlyCounts && typeof z.hourlyCounts === 'object' && z.basis && z.thresholds, 'zone');
-    return { status: 'ready', builtAt: data.builtAt, month: data.month, zones: data.zones };
-  } catch (error) { return { status: error.code === 'ENOENT' ? 'unconfigured' : 'error', zones: [] }; }
+    for (const d of data.designated) check(typeof d.id === 'string' && typeof d.name === 'string' && validPoint(d.point), 'designated');
+    for (const h of data.towingHotspots) check(typeof h.address === 'string' && Number.isFinite(h.count) && h.count > 0 && validPoint(h.point), 'hotspot');
+    return { status: 'ready', builtAt: data.builtAt, month: data.month, period: data.period, zones: data.zones, designated: data.designated, towingHotspots: data.towingHotspots };
+  } catch (error) { return { status: error.code === 'ENOENT' ? 'unconfigured' : 'error', zones: [], designated: [], towingHotspots: [] }; }
 }
 
 // Verdicts at a moment from the shared engine; parked/available stay unknown until an operator shares inventory.

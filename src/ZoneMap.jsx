@@ -9,7 +9,7 @@ import { visibleMapCenterY } from './zone-search.mjs';
 const names = { open: '개방', reduced: '축소 운영', closed: '폐쇄', unknown: '확인 중' };
 const pilotCenter = [37.4827, 126.941];
 
-export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [], selectedVehicleId = null, onVehicleSelect, towingAreas, selectedId, onSelect, onBoundsChange, focus, position, bottomFraction = 0 }) {
+export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [], designated = [], selectedVehicleId = null, onVehicleSelect, towingAreas, selectedId, onSelect, onBoundsChange, focus, position, bottomFraction = 0 }) {
   const element = useRef(null); const map = useRef(null); const layer = useRef(null);
   const towingLayer = useRef(null);
   const [tileError, setTileError] = useState(false);
@@ -39,6 +39,13 @@ export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [],
       L.circle(area.point, { radius: area.radiusM, color: color('--color-error'), weight: 1, dashArray: '4 4', fillOpacity: 0.08 }).addTo(layer.current).bindTooltip(label);
     }
     for (const route of routes) L.polyline(route, { color: color('--color-accent'), weight: 3, dashArray: '6 6', interactive: false }).addTo(layer.current);
+    // Designated zones without an operating verdict: a grey square, so shape (not only colour) separates them from dynamic zones.
+    for (const zone of designated) {
+      const square = document.createElement('b');
+      Object.assign(square.style, { display: 'block', width: '100%', height: '100%', background: color('--color-text-secondary'), border: `1px solid ${color('--color-background-surface')}` });
+      const label = document.createElement('strong'); label.textContent = `${zone.name} · 서울시 지정 구역 · 운영 상태 없음`;
+      L.marker(zone.point, { icon: L.divIcon({ html: square, className: '', iconSize: [9, 9] }), keyboard: false }).addTo(layer.current).bindTooltip(label);
+    }
     for (const zone of zones) {
       const selected = zone.id === selectedId;
       const shape = L.polygon(zone.boundary, { color: palette[zone.status], weight: selected ? 4 : 2, fillOpacity: selected ? 0.4 : 0.18 }).addTo(layer.current);
@@ -50,7 +57,8 @@ export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [],
     }
     for (const vehicle of vehicles) {
       const picked = vehicle.id === selectedVehicleId;
-      const marker = L.circleMarker(vehicle.point, { radius: picked ? 9 : 5, weight: picked ? 3 : 1, color: color(vehicle.alert ? '--color-error' : '--color-accent'), fillOpacity: 0.8 }).addTo(layer.current);
+      // Alerts also get a bigger, thicker marker so they are not told apart by colour alone.
+      const marker = L.circleMarker(vehicle.point, { radius: picked ? 9 : vehicle.alert ? 7 : 5, weight: picked || vehicle.alert ? 3 : 1, color: color(vehicle.alert ? '--color-error' : '--color-accent'), fillOpacity: 0.8 }).addTo(layer.current);
       const label = document.createElement('strong'); label.textContent = vehicle.label ?? `${vehicle.cityName} · ${vehicle.provider} ${vehicle.id} · 배터리 ${vehicle.battery}% · 원관측 시각 미제공`;
       marker.bindTooltip(label);
       if (onVehicleSelect) marker.on('click', () => onVehicleSelect(vehicle.id));
@@ -59,7 +67,7 @@ export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [],
       L.circle(position.point, { radius: Math.min(position.accuracy, 5000), color: color('--color-accent'), weight: 1, fillOpacity: 0.07, interactive: false }).addTo(layer.current);
       L.circleMarker(position.point, { radius: 7, color: color('--color-accent'), fillOpacity: 1, interactive: false }).addTo(layer.current);
     }
-  }, [zones, vehicles, areas, routes, selectedVehicleId, onVehicleSelect, selectedId, onSelect, position]);
+  }, [zones, vehicles, areas, routes, designated, selectedVehicleId, onVehicleSelect, selectedId, onSelect, position]);
   useEffect(() => {
     if (!map.current) return;
     towingLayer.current.clearLayers();
