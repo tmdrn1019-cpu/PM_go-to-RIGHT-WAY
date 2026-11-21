@@ -10,7 +10,9 @@ import { Collapsible } from '@astryxdesign/core/Collapsible';
 const pill = { display: 'inline-flex', justifyContent: 'center', alignItems: 'center', padding: 'var(--spacing-3) var(--spacing-6)', borderRadius: 'var(--radius-full)', textDecoration: 'none', fontWeight: 500 };
 const cta = { ...pill, background: 'var(--color-accent)', color: 'var(--color-on-accent, var(--color-background-surface))' };
 const ghost = { ...pill, border: 'var(--border-width) solid var(--color-text-primary)', color: 'var(--color-text-primary)' };
-const screen = { minHeight: '100dvh', flexShrink: 0, position: 'relative', scrollSnapAlign: 'start' };
+// The page scrolls as the document (an inner 100dvh scroller with scroll-snap stuck on phones); svh keeps sections from
+// resizing while the mobile address bar shows and hides.
+const screen = { minHeight: '100svh', flexShrink: 0, position: 'relative' };
 const ink = 'var(--color-text-primary)';
 const paprika = 'var(--color-text-accent)';
 // One 14s cycle: quiet (zone open) -> crowded (zone shrinks) -> quiet.
@@ -104,7 +106,7 @@ export default function LandingPage() {
   const [audience, setAudience] = useState('operator');
   useEffect(() => { const svg = svgRef.current; if (svg) (playing ? svg.unpauseAnimations() : svg.pauseAnimations()); }, [playing]);
   const who = audiences[audience];
-  return <VStack as="main" height="100dvh" gap={0} isScrollable style={{ scrollSnapType: 'y proximity', scrollBehavior: 'smooth', wordBreak: 'keep-all', background: 'var(--color-background-body)' }}>
+  return <VStack as="main" gap={0} style={{ wordBreak: 'keep-all', background: 'var(--color-background-body)' }}>
     <VStack as="section" aria-labelledby="hero-title" gap={0} style={{ ...screen, overflow: 'hidden' }}>
       <HeroScene svgRef={svgRef} />
       <HStack padding={6} hAlign="between" vAlign="center" style={{ position: 'relative' }}><Link href="/" type="large" weight="bold">PM 주차존</Link><Link href="/mobile" weight="semibold">모바일 웹</Link></HStack>
