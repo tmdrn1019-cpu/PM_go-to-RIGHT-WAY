@@ -24,11 +24,6 @@
       "source": "token"
     },
     {
-      "thing": "warning",
-      "value": "#FF9500",
-      "source": "dial"
-    },
-    {
       "thing": "danger",
       "value": "#FF2D2D",
       "source": "dial"
@@ -46,60 +41,77 @@
       "mode": "light"
     },
     {
-      "thing": "corners",
-      "value": "round",
-      "source": "dial"
-    },
-    {
-      "thing": "headings",
-      "value": "heavy",
-      "source": "dial",
-      "axis": "weight"
-    },
-    {
-      "thing": "font",
-      "value": "rounded",
-      "source": "dial"
-    },
-    {
-      "thing": "neutral",
-      "value": "#1F6F5F",
-      "source": "dial"
-    },
-    {
       "thing": "accent",
-      "value": "#2FA084",
-      "source": "dial"
-    },
-    {
-      "thing": "success",
-      "value": "#6FCF97",
+      "value": "#0075DE",
       "source": "dial"
     },
     {
       "thing": "info",
-      "value": "#2FA084",
+      "value": "#0075DE",
+      "source": "dial"
+    },
+    {
+      "thing": "neutral",
+      "value": "#615D59",
+      "source": "dial"
+    },
+    {
+      "thing": "success",
+      "value": "#1AAE39",
+      "source": "dial"
+    },
+    {
+      "thing": "warning",
+      "value": "#DD5B00",
       "source": "dial"
     },
     {
       "thing": "--color-background-body",
-      "value": "#EEEEEE",
-      "source": "token",
-      "mode": "light"
-    },
-    {
-      "thing": "--color-text-primary",
-      "value": "#1F6F5F",
+      "value": "#F6F5F4",
       "source": "token",
       "mode": "light"
     },
     {
       "thing": "--color-background-muted",
-      "value": "#6FCF97",
+      "value": "#F6F5F4",
       "source": "token",
       "mode": "light"
+    },
+    {
+      "thing": "--color-text-primary",
+      "value": "#000000",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "corners",
+      "value": "large",
+      "source": "dial"
+    },
+    {
+      "thing": "corners",
+      "value": "pill",
+      "source": "dial",
+      "on": "button"
+    },
+    {
+      "thing": "font",
+      "value": "inter",
+      "source": "dial"
+    },
+    {
+      "thing": "letter-spacing",
+      "value": "-0.025em",
+      "source": "property",
+      "on": "heading"
+    },
+    {
+      "thing": "headings",
+      "value": "bold",
+      "source": "dial",
+      "axis": "weight"
     }
   ],
   "lifted": [],
-  "palette": "873596cb38af9e1c7ad8471f249b55320ea568db51c421d641b68ce147833c6c"
+  "palette": "d204d73c4d8d10a948ca5329bb69167ba131a38b7685c242aa2f327d8112618c"
 }
