@@ -1,0 +1,5 @@
+/* Inter for the pm theme (DESIGN-notion.md). Korean glyphs fall back to the system font. */
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';

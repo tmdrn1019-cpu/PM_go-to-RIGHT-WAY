@@ -8,6 +8,7 @@ import "@astryxdesign/theme-neutral/theme.css";
 import "@astryxdesign/theme-neutral/fonts.css";
 import {pmTheme as _astryxTheme1} from "./themes/pm/pm.js";
 import "./themes/pm/pm.css";
+import "./themes/pm/pm.fonts.css";
 
 export const themes = {
   "neutral": _astryxTheme0,

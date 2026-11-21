@@ -7,8 +7,8 @@ import { Button } from '@astryxdesign/core/Button';
 import { Grid } from '@astryxdesign/core/Grid';
 import { Collapsible } from '@astryxdesign/core/Collapsible';
 
-const pill = { display: 'inline-flex', justifyContent: 'center', alignItems: 'center', padding: 'var(--spacing-3) var(--spacing-6)', borderRadius: 'var(--radius-full)', textDecoration: 'none', fontWeight: 700 };
-const cta = { ...pill, background: 'var(--color-text-accent)', color: 'var(--color-background-surface)' };
+const pill = { display: 'inline-flex', justifyContent: 'center', alignItems: 'center', padding: 'var(--spacing-3) var(--spacing-6)', borderRadius: 'var(--radius-full)', textDecoration: 'none', fontWeight: 500 };
+const cta = { ...pill, background: 'var(--color-accent)', color: 'var(--color-on-accent, var(--color-background-surface))' };
 const ghost = { ...pill, border: 'var(--border-width) solid var(--color-text-primary)', color: 'var(--color-text-primary)' };
 const screen = { minHeight: '100dvh', flexShrink: 0, position: 'relative', scrollSnapAlign: 'start' };
 const ink = 'var(--color-text-primary)';
