@@ -32,7 +32,9 @@ export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [],
     if (!map.current) return;
     layer.current.clearLayers();
     const css = getComputedStyle(element.current);
-    const color = (token) => css.getPropertyValue(token).trim() || css.color;
+    // Theme tokens are light-dark(...), which canvas cannot parse: let the browser resolve each one to rgb on a probe element.
+    const probe = document.createElement('i'); element.current.appendChild(probe);
+    const color = (token) => { probe.style.color = `var(${token}, currentColor)`; return getComputedStyle(probe).color || css.color; };
     const palette = { open: color('--color-success'), reduced: color('--color-warning'), closed: color('--color-error'), unknown: color('--color-text-secondary') };
     // Towing areas as shaded red areas (where not to leave a PM), drawn under the zones and mission paths.
     for (const area of areas) {
@@ -47,12 +49,16 @@ export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [],
       const label = document.createElement('strong'); label.textContent = `${zone.name} · 서울시 지정 구역 · 운영 상태 없음`;
       sign(zone.point, { muted: true }, label.textContent, -200).bindTooltip(label);
     }
+    // Area zones can number in the thousands: polygons go on one canvas, and only the selected zone gets a P sign.
+    // Closed and reduced areas also get dashed borders so status is not shown by colour alone.
+    const renderer = L.canvas({ padding: 0.2 });
     for (const zone of zones) {
       const selected = zone.id === selectedId;
-      const shape = L.polygon(zone.boundary, { color: palette[zone.status], weight: selected ? 4 : 2, fillOpacity: selected ? 0.4 : 0.18 }).addTo(layer.current);
-      const text = `${zone.name} · ${names[zone.status]} · 여유 ${zone.available}대`;
-      const marker = sign(zone.point, { status: zone.status, picked: selected }, text, selected ? 900 : 200);
-      for (const overlay of [shape, marker]) {
+      const shape = L.polygon(zone.boundary, { renderer, color: palette[zone.status], weight: selected ? 4 : 1.5, dashArray: { closed: '2 4', reduced: '8 4' }[zone.status], fillOpacity: selected ? 0.45 : zone.status === 'closed' ? 0.35 : 0.2 }).addTo(layer.current);
+      const text = `${zone.name} · ${names[zone.status]} · ${zone.available === null ? `정원 ${zone.capacity}` : `여유 ${zone.available}`}대`;
+      const overlays = [shape];
+      if (selected || zone.kind !== 'area') overlays.push(sign(zone.point, { status: zone.status, picked: selected }, text, selected ? 900 : 200));
+      for (const overlay of overlays) {
         const label = document.createElement('strong'); label.textContent = text;
         overlay.bindTooltip(label); overlay.on('click', () => onSelect(zone.id));
       }
@@ -69,6 +75,7 @@ export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [],
       L.circle(position.point, { radius: Math.min(position.accuracy, 5000), color: color('--color-accent'), weight: 1, fillOpacity: 0.07, interactive: false }).addTo(layer.current);
       L.circleMarker(position.point, { radius: 7, color: color('--color-accent'), fillOpacity: 1, interactive: false }).addTo(layer.current);
     }
+    probe.remove();
   }, [zones, vehicles, areas, routes, designated, selectedVehicleId, onVehicleSelect, selectedId, onSelect, position]);
   useEffect(() => {
     if (!map.current) return;
@@ -90,6 +97,8 @@ export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [],
   }, [selectedId, bottomFraction, topInset]);
   useEffect(() => {
     if (!map.current || !focus) return;
+    // The first fit can run before layout settles; a stale zero size makes fitBounds jump to max zoom.
+    map.current.invalidateSize({ pan: false });
     if (focus.point) {
       const projected = map.current.project(focus.point, 17);
       projected.y += map.current.getSize().y / 2 - visibleMapCenterY(map.current.getSize().y, bottomFraction, topInset);
