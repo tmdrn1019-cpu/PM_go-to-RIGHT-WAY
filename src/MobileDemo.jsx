@@ -5,7 +5,6 @@ import { VStack, HStack } from '@astryxdesign/core/Layout';
 import { Heading, Text } from '@astryxdesign/core/Text';
 import { Button } from '@astryxdesign/core/Button';
 import { Link } from '@astryxdesign/core/Link';
-import { Section } from '@astryxdesign/core/Section';
 import { Divider } from '@astryxdesign/core/Divider';
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
 import { Thumbnail } from '@astryxdesign/core/Thumbnail';
@@ -194,7 +193,6 @@ export default function MobileDemo() {
         {active && !no3d ? <Suspense fallback={<Text role="status">3D 지도를 불러오고 있어요.</Text>}><WalkMap3D route={active.route} point={missionPoint} clearM={active.clearM} startLabel={`견인 위치 · ${active.reason ?? '견인 구역'}`} targetLabel={protectedMove ? active.destinationName : '옮길 목표 지점 (원 밖 아무 곳)'} scooterLabel={`${active.scooterId} · 끌고 이동 중 (시연·모의 위치)`} onFail={on3dFail} /></Suspense>
         : <ZoneMap zones={active ? [] : crowd?.zones ?? []} designated={active ? [] : state?.designated ?? []} vehicles={missionVehicles} selectedVehicleId={active ? active.scooterId : picked} onVehicleSelect={onVehicleSelect} areas={areas} routes={active ? [active.route] : []} selectedId={null} onSelect={noop} onBoundsChange={noop} focus={focus} position={position} fitMaxZoom={active ? 19 : 17} />}
       </VStack>
-      <Section variant="muted"><VStack gap={2}><Text type="label">{!crowd ? '혼잡 존 확인 중' : crowd.failed ? '혼잡 존을 불러오지 못했어요. 지도에 표시하지 않습니다.' : (() => { const near = crowd.zones.filter((z) => distanceM(me.point, z.point) <= 1000); return near.length ? `내 주변 1km 혼잡 존: 폐쇄 ${near.filter((z) => z.status === 'closed').length}곳 · 축소 ${near.filter((z) => z.status === 'reduced').length}곳 (${time(crowd.at)} 판정)` : `내 주변 1km에 지금 혼잡 존이 없어요 (${time(crowd.at)} 판정)`; })()}</Text><Text type="supporting">혼잡 존은 공공데이터(지하철 승하차·2015 보도 조사) 판정이며 빨간 점선은 폐쇄, 주황 점선은 축소입니다. 시연 자료가 아닙니다.</Text><Text type="supporting">{active && !no3d ? '3D 건물: © OpenStreetMap · OpenFreeMap. 견인 사유 시설의 위치는 시연 가정입니다. ' : ''}잠금 해제·GPS·사진 판정·포인트는 모두 모의 동작이며 실제 기기와 계정에 영향이 없습니다. 내 위치는 이 브라우저에서만 씁니다.</Text></VStack></Section>
       <VStack padding={4} gap={4} isScrollable style={{ flex: 1, minHeight: 0 }} aria-label="미션 패널">{sheet}</VStack>
     </VStack>
   </AppShell>;
