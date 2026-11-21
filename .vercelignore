@@ -15,3 +15,6 @@ data/*
 !data/towing-areas.json
 !data/towing-geocodes.json
 !data/sdot-sensors.json
+*.pptx
+*.pdf
+~$*
