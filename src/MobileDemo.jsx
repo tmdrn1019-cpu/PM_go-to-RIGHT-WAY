@@ -37,6 +37,23 @@ export default function MobileDemo() {
   useEffect(() => () => { if (shot) URL.revokeObjectURL(shot.url); }, [shot]);
   const load = useCallback(() => fetch('/api/demo/state', { cache: 'no-store' }).then((r) => r.ok ? r.json() : r.json().then((d) => Promise.reject(new Error(d.error)))).then(setState).catch((e) => setMessage(e.message || '시연 상태를 불러오지 못했습니다.')), []);
   useEffect(() => { load(); }, [load]);
+  // Live crowd zones (same public verdicts as /service, at the real time): only crowded pieces exist as zones. Refreshed every
+  // minute; on failure they are dropped rather than left stale.
+  const [crowd, setCrowd] = useState(null);
+  useEffect(() => {
+    let controller;
+    const refresh = () => {
+      controller?.abort(); controller = new AbortController();
+      fetch(`/api/zones?active=1&at=${encodeURIComponent(new Date().toISOString())}`, { cache: 'no-store', signal: controller.signal })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error('zones'))))
+        .then((d) => setCrowd({ at: d.at, zones: d.status === 'ready' ? d.zones.filter((z) => z.kind === 'area' && (z.status === 'closed' || z.status === 'reduced')) : [] }))
+        .catch(() => { if (!controller.signal.aborted) setCrowd({ failed: true, zones: [] }); });
+    };
+    refresh(); const timer = setInterval(refresh, 60_000);
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); controller?.abort(); };
+  }, []);
   const send = async (action, done) => {
     setBusy(true); setMessage('');
     try {
@@ -175,9 +192,9 @@ export default function MobileDemo() {
     <VStack height="100%" gap={0} style={{ minHeight: 0 }}>
       <VStack style={{ height: '45%', minHeight: 0, position: 'relative', flexShrink: 0 }}>
         {active && !no3d ? <Suspense fallback={<Text role="status">3D 지도를 불러오고 있어요.</Text>}><WalkMap3D route={active.route} point={missionPoint} clearM={active.clearM} startLabel={`견인 위치 · ${active.reason ?? '견인 구역'}`} targetLabel={protectedMove ? active.destinationName : '옮길 목표 지점 (원 밖 아무 곳)'} scooterLabel={`${active.scooterId} · 끌고 이동 중 (시연·모의 위치)`} onFail={on3dFail} /></Suspense>
-        : <ZoneMap zones={active ? [] : state?.zones ?? []} designated={active ? [] : state?.designated ?? []} vehicles={missionVehicles} selectedVehicleId={active ? active.scooterId : picked} onVehicleSelect={onVehicleSelect} areas={areas} routes={active ? [active.route] : []} selectedId={null} onSelect={noop} onBoundsChange={noop} focus={focus} position={position} fitMaxZoom={active ? 19 : 17} />}
+        : <ZoneMap zones={active ? [] : crowd?.zones ?? []} designated={active ? [] : state?.designated ?? []} vehicles={missionVehicles} selectedVehicleId={active ? active.scooterId : picked} onVehicleSelect={onVehicleSelect} areas={areas} routes={active ? [active.route] : []} selectedId={null} onSelect={noop} onBoundsChange={noop} focus={focus} position={position} fitMaxZoom={active ? 19 : 17} />}
       </VStack>
-      <Section variant="muted"><Text type="supporting">{active && !no3d ? '3D 건물: © OpenStreetMap · OpenFreeMap. 견인 사유 시설의 위치는 시연 가정입니다. ' : ''}잠금 해제·GPS·사진 판정·포인트는 모두 모의 동작이며 실제 기기와 계정에 영향이 없습니다. 내 위치는 이 브라우저에서만 씁니다.</Text></Section>
+      <Section variant="muted"><VStack gap={2}><Text type="label">{!crowd ? '혼잡 존 확인 중' : crowd.failed ? '혼잡 존을 불러오지 못했어요. 지도에 표시하지 않습니다.' : (() => { const near = crowd.zones.filter((z) => distanceM(me.point, z.point) <= 1000); return near.length ? `내 주변 1km 혼잡 존: 폐쇄 ${near.filter((z) => z.status === 'closed').length}곳 · 축소 ${near.filter((z) => z.status === 'reduced').length}곳 (${time(crowd.at)} 판정)` : `내 주변 1km에 지금 혼잡 존이 없어요 (${time(crowd.at)} 판정)`; })()}</Text><Text type="supporting">혼잡 존은 공공데이터(지하철 승하차·2015 보도 조사) 판정이며 빨간 점선은 폐쇄, 주황 점선은 축소입니다. 시연 자료가 아닙니다.</Text><Text type="supporting">{active && !no3d ? '3D 건물: © OpenStreetMap · OpenFreeMap. 견인 사유 시설의 위치는 시연 가정입니다. ' : ''}잠금 해제·GPS·사진 판정·포인트는 모두 모의 동작이며 실제 기기와 계정에 영향이 없습니다. 내 위치는 이 브라우저에서만 씁니다.</Text></VStack></Section>
       <VStack padding={4} gap={4} isScrollable style={{ flex: 1, minHeight: 0 }} aria-label="미션 패널">{sheet}</VStack>
     </VStack>
   </AppShell>;

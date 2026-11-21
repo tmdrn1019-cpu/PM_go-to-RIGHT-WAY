@@ -28,7 +28,11 @@ export function createServiceApp({ feedPath = process.env.SERVICE_DATA_FILE, now
     const data = readPublicZones(publicZonesFile);
     const dynamic = new Set(data.zones.map((z) => z.id));
     const designated = data.designated.filter((d) => !dynamic.has(`seoul-${d.id}`)).map(({ id, name, address, point }) => ({ id, name, address: address ?? null, point }));
-    res.json({ status: data.status, at: new Date(at).toISOString(), builtAt: data.builtAt ?? null, month: data.month ?? null, zones: publicZonesAt(data.zones, at), designated });
+    const zones = publicZonesAt(data.zones, at);
+    const counts = { watched: zones.length, reduced: zones.filter((z) => z.status === 'reduced').length, closed: zones.filter((z) => z.status === 'closed').length };
+    // active=1: only pieces that are a zone right now (reduced or closed); the full set is ~2MB and the maps poll it.
+    const shown = req.query.active === '1' ? zones.filter((z) => z.status === 'reduced' || z.status === 'closed') : zones;
+    res.json({ status: data.status, at: new Date(at).toISOString(), builtAt: data.builtAt ?? null, month: data.month ?? null, counts, zones: shown, designated });
   });
   // Synthetic demo devices around real towing addresses; never real vehicle positions.
   app.get('/api/zones/synthetic-pm', (_req, res) => {

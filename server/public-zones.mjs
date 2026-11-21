@@ -1,16 +1,30 @@
 import { readFileSync, statSync } from 'node:fs';
-import { evaluateRelative, nextScheduledChange, distanceM, RELATIVE_POLICY, shareCutoff, losGrade } from './engine.mjs';
+import { evaluateZone, evaluateRelative, distanceM, LOS_REFERENCE, RELATIVE_POLICY, shareCutoff } from './engine.mjs';
 
-// User decisions (2026-11-20): no field survey; target Seoul's busiest 2025 towing hotspots; judge by each place's own
-// station-hour crowding against Seoul-wide cut-offs (engine.evaluateRelative). Zones are snapped to the nearest Seoul-designated PM parking zone so the
-// space is officially permitted, and crowding comes from the nearest subway station's hourly ridership (full day).
-export const HOTSPOT_RULES = { spacingM: 300, snapM: 500, stationRadiusM: 1000, limit: 20, capacities: [10, 5], lengthM: 6, depthM: 1.2 };
-// Sidewalk evidence (user choice 2026-11-20): shown next to the verdict, never used to decide it.
-export const SIDEWALK_RULES = { radiusM: 300, parkedDepthM: 1.2 };
+// User decision (2026-11-21): zones are map areas like an operator app's return zones: OSM land-use polygons
+// (residential, commercial, retail blocks) are open by default and close or shrink when crowded. Crowding is checked two
+// ways and the stricter wins: the nearest subway station's hourly ridership against Seoul-wide station-hour cut-offs
+// (engine.evaluateRelative) and the nearest 2015 sidewalk survey's walking LOS (engine.evaluateZone). Towing data is not used.
+// User request (2026-11-21): zones appear only where and when it is crowded and stay small, so each land-use area is cut
+// on a cellM grid (pieces keep the real outline) and only pieces near a crowd source are kept: within stationRadiusM of a
+// station or spotRadiusM of a usable 2015 survey spot. Radii and cell size are assumptions.
+export const AREA_RULES = { cellM: 100, minPieceM2: 300, minAreaM2: 3_000, maxAreaM2: 2_000_000, stationRadiusM: 300, spotRadiusM: 150,
+  // Assumed layouts for the LOS check: 10 devices at right angles take 1.2m of sidewalk, 5 parallel to the kerb take 0.6m.
+  layouts: [{ capacity: 10, depthM: 1.2 }, { capacity: 5, depthM: 0.6 }] };
+// Map area (user choice 2026-11-21, to keep the map responsive): survey spot ids start with the Seoul district code.
+export const ZONE_DISTRICTS = { '20': '동작구', '21': '관악구', '22': '서초구', '23': '강남구' };
+export const inZoneDistricts = (place) => typeof place.id === 'string' && /^[0-9][0-9]-/.test(place.id) ? place.id.slice(0, 2) in ZONE_DISTRICTS
+  : Object.values(ZONE_DISTRICTS).some((gu) => place.district === gu || String(place.address ?? '').includes(` ${gu} `));
+export const SIDEWALK_SOURCE = { name: '서울시 유동인구조사 2015(조사지점·관찰조사)', url: 'https://data.seoul.go.kr/dataList/OA-21707/F/1/datasetView.do' };
 export const RIDERSHIP_SOURCE = { name: '서울시 지하철 역별 시간대별 승하차(일평균)', url: 'https://data.seoul.go.kr/dataList/OA-12252/S/1/datasetView.do' };
+export const OSM_SOURCE = { name: 'OpenStreetMap 토지이용 구역(landuse=residential·commercial·retail)', url: 'https://www.openstreetmap.org/copyright' };
+const LANDUSE = { residential: '주거', commercial: '상업', retail: '판매' };
 
 const check = (valid, message) => { if (!valid) throw new Error(message); };
 const KST = 9 * 3_600_000;
+const M = 111_195;
+const round1 = (v) => Math.round(v * 10) / 10;
+const nearest = (point, list, radius) => list.map((x) => ({ ...x, distanceM: distanceM(point, x.point) })).filter((x) => x.distanceM <= radius).sort((a, b) => a.distanceM - b.distanceM)[0];
 const stationKey = (name) => String(name).replace(/\(.*?\)/g, '').replace(/역$/, '').trim();
 
 // Station points from subwayStationMaster (lines averaged) and daily-average boardings+alightings per hour from CardSubwayTime.
@@ -42,56 +56,118 @@ export function cityThresholds(stations, policy = RELATIVE_POLICY) {
   return { ...policy, close: shareCutoff(hours, policy.closeShare), reduce: shareCutoff(hours, policy.reduceShare), stationHours: hours.length, stations: stations.length };
 }
 
-// A 6m x 1.2m strip centred on the zone point, laid east-west (orientation is an assumption).
-function strip([lat, lng], lengthM, depthM) {
-  const dy = depthM / 2 / 111_195; const dx = lengthM / 2 / (111_195 * Math.cos(lat * Math.PI / 180));
-  return [[lat - dy, lng - dx], [lat + dy, lng - dx], [lat + dy, lng + dx], [lat - dy, lng + dx], [lat - dy, lng - dx]];
-}
-const nearest = (point, list, radius) => list.map((x) => ({ ...x, distanceM: distanceM(point, x.point) })).filter((x) => x.distanceM <= radius).sort((a, b) => a.distanceM - b.distanceM)[0];
-const round1 = (v) => Math.round(v * 10) / 10;
-
-// Nearest 2015 survey spot within radiusM: its busiest weekday hour as an hour-average flow over the full surveyed width,
-// and over the width left after a parked device (depth is the zone strip assumption).
-export function sidewalkEvidence(point, spots, rules = SIDEWALK_RULES) {
-  const spot = nearest(point, spots.filter((s) => Array.isArray(s.point) && Number.isFinite(s.widthM) && s.widthM > 0 && s.hourly), rules.radiusM);
-  const hours = spot && Object.entries(spot.hourly).map(([h, n]) => [Number(h), n]).filter(([h, n]) => Number.isInteger(h) && Number.isFinite(n) && n >= 0);
-  if (!hours?.length) return null;
-  const [peakHour, peakCount] = hours.sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
-  const flow = peakCount / 60 / spot.widthM;
-  const remainingWidthM = round1(spot.widthM - rules.parkedDepthM);
-  const parkedFlow = remainingWidthM > 0 ? peakCount / 60 / remainingWidthM : null;
-  return { year: 2015, spotName: spot.name, distanceM: Math.round(spot.distanceM), widthM: spot.widthM, walkway: spot.walkway ?? null, obstacle: spot.obstacle ?? null,
-    peakHour, peakCount, flow: round1(flow), los: losGrade(flow), parkedDepthM: rules.parkedDepthM, remainingWidthM,
-    parkedFlow: parkedFlow === null ? null : round1(parkedFlow), parkedLos: parkedFlow === null ? null : losGrade(parkedFlow) };
-}
-const total = (hourly) => hourly.reduce((a, b) => a + b, 0);
-
-// areas: towing addresses with points; designated: Seoul PM parking zones with points; stations: stationProfiles().
-export function buildHotspotZones({ areas, designated, stations, period, month, sidewalk = [], rules = HOTSPOT_RULES }) {
-  const open = areas.filter((a) => Array.isArray(a.point)).sort((a, b) => b.count - a.count || a.id.localeCompare(b.id));
-  check(open.length, '좌표가 확인된 견인 주소가 없습니다.');
-  check(designated.length && stations.length, '지정 주차구역과 지하철역 자료가 필요합니다.');
-  const thresholds = cityThresholds(stations);
-  const totals = stations.map((s) => total(s.hourly)).sort((a, b) => a - b);
-  const medianStation = totals[Math.floor(totals.length / 2)];
-  const hotspots = [];
-  // Greedy grouping: the busiest unassigned address seeds a hotspot and absorbs addresses within spacingM.
-  while (open.length) {
-    const seed = open[0];
-    const members = open.filter((a) => distanceM(seed.point, a.point) <= rules.spacingM);
-    for (const m of members) open.splice(open.indexOf(m), 1);
-    const zone = nearest(seed.point, designated, rules.snapM);
-    const station = nearest(seed.point, stations, rules.stationRadiusM);
-    // "혼잡이 많은 곳": the nearest station must carry at least the median daily ridership of Seoul stations.
-    if (zone && station && total(station.hourly) >= medianStation) hotspots.push({ seed, zone, station, towingCount: members.reduce((sum, a) => sum + a.count, 0), addressCount: members.length });
+// Area (m²) and centroid of a closed ring, on a local metre grid.
+export function ringStats(ring) {
+  const origin = ring[0]; const cos = Math.cos(origin[0] * Math.PI / 180);
+  const xy = ring.map(([lat, lng]) => [(lng - origin[1]) * M * cos, (lat - origin[0]) * M]);
+  let a = 0; let cx = 0; let cy = 0;
+  for (let i = 0; i + 1 < xy.length; i++) {
+    const [x0, y0] = xy[i]; const [x1, y1] = xy[i + 1]; const c = x0 * y1 - x1 * y0;
+    a += c; cx += (x0 + x1) * c; cy += (y0 + y1) * c;
   }
-  const used = new Set();
-  return hotspots.sort((a, b) => b.towingCount - a.towingCount).filter(({ zone }) => !used.has(zone.id) && used.add(zone.id)).slice(0, rules.limit)
-    .map(({ seed, zone, station, towingCount, addressCount }) => ({
-      id: `seoul-${zone.id}`, name: zone.name, address: zone.address, district: seed.district, point: zone.point,
-      boundary: strip(zone.point, rules.lengthM, rules.depthM), vehicleTypes: ['scooter'], layouts: rules.capacities.map((capacity) => ({ capacity })), windows: [],
-      hourlyCounts: Object.fromEntries(station.hourly.map((v, h) => [h, v])), thresholds,
-      basis: { towingCount, addressCount, period, spacingM: rules.spacingM, hotspotAddress: seed.address, hotspotDistanceM: Math.round(zone.distanceM), stationName: station.name, stationDistanceM: Math.round(station.distanceM), month, sidewalk: sidewalkEvidence(zone.point, sidewalk) } }));
+  if (!a) return { areaM2: 0, centroid: origin };
+  return { areaM2: Math.abs(a / 2), centroid: [origin[0] + cy / (3 * a) / M, origin[1] + cx / (3 * a) / (M * cos)] };
+}
+
+const usableSpot = (s) => Array.isArray(s.point) && Number.isFinite(s.widthM) && s.widthM > 0 && s.hourly && typeof s.hourly === 'object';
+// Hour totals to an average 15-minute count (the survey has no 15-minute peaks, so real peaks are higher).
+const quarterCounts = (hourly) => Object.fromEntries(Object.entries(hourly).map(([h, n]) => [Number(h), Number(n)])
+  .filter(([h, n]) => Number.isInteger(h) && h >= 0 && h < 24 && Number.isFinite(n) && n >= 0).map(([h, n]) => [h, round1(n / 4)]));
+// Only layouts that leave 2m: a narrow surveyed sidewalk must not close a whole block for good.
+const layoutsFor = (widthM, rules) => rules.layouts.map(({ capacity, depthM }) => ({ capacity, depthM, effectiveWidthM: round1(widthM - depthM) })).filter((l) => l.effectiveWidthM >= 2);
+
+// Fixed metre grid over Seoul (equirectangular around this origin; error is far below a metre per 100m cell here).
+const GRID_ORIGIN = [37.5, 127.0];
+const GRID_COS = Math.cos(GRID_ORIGIN[0] * Math.PI / 180);
+const gridXY = ([lat, lng]) => [(lng - GRID_ORIGIN[1]) * M * GRID_COS, (lat - GRID_ORIGIN[0]) * M];
+const gridLL = ([x, y]) => [Math.round((GRID_ORIGIN[0] + y / M) * 1e6) / 1e6, Math.round((GRID_ORIGIN[1] + x / (M * GRID_COS)) * 1e6) / 1e6];
+// Sutherland-Hodgman against an axis-aligned box: exact for any subject polygon because the box is convex.
+export function clipToBox(points, [x0, y0, x1, y1]) {
+  const edges = [[(p) => p[0] >= x0, (a, b) => [x0, a[1] + (b[1] - a[1]) * (x0 - a[0]) / (b[0] - a[0])]],
+    [(p) => p[0] <= x1, (a, b) => [x1, a[1] + (b[1] - a[1]) * (x1 - a[0]) / (b[0] - a[0])]],
+    [(p) => p[1] >= y0, (a, b) => [a[0] + (b[0] - a[0]) * (y0 - a[1]) / (b[1] - a[1]), y0]],
+    [(p) => p[1] <= y1, (a, b) => [a[0] + (b[0] - a[0]) * (y1 - a[1]) / (b[1] - a[1]), y1]]];
+  let out = points;
+  for (const [inside, cross] of edges) {
+    const input = out; out = [];
+    input.forEach((cur, i) => {
+      const prev = input[(i + input.length - 1) % input.length];
+      if (inside(cur)) { if (!inside(prev)) out.push(cross(prev, cur)); out.push(cur); } else if (inside(prev)) out.push(cross(prev, cur));
+    });
+    if (!out.length) break;
+  }
+  return out;
+}
+// Pieces of a closed lat/lng ring, one per grid cell it touches, as closed lat/lng rings.
+export function gridPieces(ring, cellM) {
+  const xy = ring.slice(0, -1).map(gridXY);
+  const xs = xy.map((p) => p[0]); const ys = xy.map((p) => p[1]);
+  const pieces = [];
+  for (let cx = Math.floor(Math.min(...xs) / cellM); cx * cellM < Math.max(...xs); cx++) {
+    for (let cy = Math.floor(Math.min(...ys) / cellM); cy * cellM < Math.max(...ys); cy++) {
+      const piece = clipToBox(xy, [cx * cellM, cy * cellM, (cx + 1) * cellM, (cy + 1) * cellM]);
+      if (piece.length >= 3) pieces.push({ cell: `${cx}_${cy}`, ring: [...piece, piece[0]].map(gridLL) });
+    }
+  }
+  return pieces;
+}
+
+// areas: [{ id, landuse, name?, ring: [[lat,lng],...closed] }] from OSM; spots: data/sidewalk-2015.json; stations: stationProfiles().
+export function buildAreaZones({ areas, spots, stations, month, rules = AREA_RULES }) {
+  const usable = spots.filter(usableSpot);
+  check(usable.length && stations.length, '보도 조사 지점과 지하철역 자료가 필요합니다.');
+  const thresholds = cityThresholds(stations);
+  const zones = [];
+  for (const a of areas) {
+    if (!Array.isArray(a.ring) || a.ring.length < 4 || !(a.landuse in LANDUSE)) continue;
+    const whole = ringStats(a.ring);
+    if (whole.areaM2 < rules.minAreaM2 || whole.areaM2 > rules.maxAreaM2) continue;
+    const kept = [];
+    for (const piece of gridPieces(a.ring, rules.cellM)) {
+      const { areaM2, centroid } = ringStats(piece.ring);
+      if (areaM2 < rules.minPieceM2) continue;
+      // District by the nearest survey spot anywhere in Seoul (its id carries the district code).
+      const home = nearest(centroid, usable, Infinity);
+      if (!home || !inZoneDistricts(home)) continue;
+      const spot = home.distanceM <= rules.spotRadiusM ? home : null;
+      const layouts = spot ? layoutsFor(spot.widthM, rules) : [];
+      const station = nearest(centroid, stations, rules.stationRadiusM);
+      // A piece with no crowd source nearby can never close, so it never becomes a zone.
+      if (!station && !layouts.length) continue;
+      kept.push({ id: `area-${a.id}-${piece.cell}`, kind: 'area', name: a.name || `${LANDUSE[a.landuse]} 구역 ${a.id}`, address: null, district: ZONE_DISTRICTS[home.id.slice(0, 2)],
+        point: centroid.map((v) => Math.round(v * 1e6) / 1e6), boundary: piece.ring, vehicleTypes: ['scooter'], windows: [],
+        layouts: rules.layouts.map(({ capacity }) => ({ capacity })), thresholds,
+        station: station ? { name: station.name, distanceM: Math.round(station.distanceM), hourly: station.hourly, month } : null,
+        walk: layouts.length ? { spotName: spot.name, distanceM: Math.round(spot.distanceM), widthM: spot.widthM, walkway: spot.walkway ?? null, obstacle: spot.obstacle ?? null, layouts, hourlyCounts: quarterCounts(spot.hourly) } : null,
+        basis: { landuse: a.landuse, areaM2: Math.round(areaM2), osmId: a.id, cellM: rules.cellM } });
+    }
+    // Pieces of one block share its name, so number them for the list.
+    kept.forEach((z, i) => zones.push(kept.length > 1 ? { ...z, name: `${z.name} ${i + 1}/${kept.length}` } : z));
+  }
+  return zones;
+}
+
+const severity = { open: 0, reduced: 1, closed: 2 };
+// Both checks at one moment; the stricter verdict wins. With neither available the area stays open by default (user policy).
+export function evaluateArea(zone, at) {
+  const hour = new Date(new Date(at).getTime() + KST).getUTCHours();
+  const parts = [];
+  if (zone.station) {
+    const r = evaluateRelative({ hourlyCounts: Object.fromEntries(zone.station.hourly.map((v, h) => [h, v])), layouts: zone.layouts, thresholds: zone.thresholds }, at);
+    parts.push({ ...r, label: `${zone.station.name}역(${zone.station.distanceM}m)` });
+  }
+  if (zone.walk?.layouts.length && zone.walk.hourlyCounts[hour] !== undefined) {
+    const r = evaluateZone({ hourlyCounts: zone.walk.hourlyCounts, layouts: zone.walk.layouts, windows: [] }, at, LOS_REFERENCE);
+    parts.push({ ...r, label: `보도 「${zone.walk.spotName}」(${zone.walk.distanceM}m)`, reason: r.flow === null ? r.reason : `15분 보행량 ${r.currentPedestrianCount15Min}명 → ${round1(r.flow)}명/분/m, LOS ${r.los}. ${r.reason}` });
+  }
+  const known = parts.filter((p) => p.status in severity);
+  const capacity0 = Math.max(...zone.layouts.map((l) => l.capacity));
+  if (!known.length) return { status: 'open', capacity: capacity0, los: null, defaultOpen: true, crowdCount: null, checks: [], reason: '이 시간 혼잡 자료가 없어 기본 개방합니다(가정).' };
+  const worst = known.reduce((a, b) => (severity[b.status] > severity[a.status] ? b : a));
+  const walk = known.find((p) => p.los);
+  return { status: worst.status, capacity: Math.min(...known.map((p) => p.capacity)), los: walk?.los ?? null, defaultOpen: false,
+    crowdCount: zone.station?.hourly[hour] ?? null, checks: known.map((p) => ({ label: p.label, status: p.status, reason: p.reason })),
+    reason: `${worst.label}: ${worst.reason}` };
 }
 
 // Synthetic demo devices (user choice 2026-11-20): Seoul has no public PM positions, so devices are scattered around real
@@ -120,25 +196,38 @@ export function towingRisk(point, hotspots, radiusM = SYNTHETIC_RULES.riskRadius
 }
 
 const validPoint = (p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite);
+// Parsed and validated once per file version: the maps poll every second and the file is ~2MB.
+let cached = null;
 export function readPublicZones(file = process.env.PUBLIC_ZONES_FILE || 'data/public-zones.json') {
   try {
-    check(statSync(file).size <= 2 * 1024 * 1024, 'size');
+    const stat = statSync(file);
+    const key = `${file}:${stat.mtimeMs}:${stat.size}`;
+    if (cached?.key === key) return cached.value;
+    const value = parsePublicZones(file, stat);
+    cached = { key, value };
+    return value;
+  } catch (error) { return { status: error.code === 'ENOENT' ? 'unconfigured' : 'error', zones: [], designated: [], towingHotspots: [] }; }
+}
+function parsePublicZones(file, stat) {
+  try {
+    check(stat.size <= 16 * 1024 * 1024, 'size');
     const data = JSON.parse(readFileSync(file, 'utf8'));
-    check(data.version === 5 && Array.isArray(data.zones) && data.zones.length > 0 && data.zones.length <= 200 && Array.isArray(data.designated) && data.designated.length <= 2000 && Array.isArray(data.towingHotspots) && data.towingHotspots.length <= 2000, 'shape');
-    for (const z of data.zones) check(typeof z.id === 'string' && Array.isArray(z.point) && Array.isArray(z.boundary) && Array.isArray(z.layouts) && z.layouts.length && z.hourlyCounts && typeof z.hourlyCounts === 'object' && z.basis && z.thresholds, 'zone');
+    check(data.version === 7 && Array.isArray(data.zones) && data.zones.length > 0 && data.zones.length <= 5000 && Array.isArray(data.designated) && data.designated.length <= 2000 && Array.isArray(data.towingHotspots) && data.towingHotspots.length <= 2000, 'shape');
+    for (const z of data.zones) check(typeof z.id === 'string' && validPoint(z.point) && Array.isArray(z.boundary) && z.boundary.length >= 4 && z.boundary.every(validPoint) && Array.isArray(z.layouts) && z.layouts.length && z.thresholds && z.basis, 'zone');
     for (const d of data.designated) check(typeof d.id === 'string' && typeof d.name === 'string' && validPoint(d.point), 'designated');
     for (const h of data.towingHotspots) check(typeof h.address === 'string' && Number.isFinite(h.count) && h.count > 0 && validPoint(h.point), 'hotspot');
-    return { status: 'ready', builtAt: data.builtAt, month: data.month, period: data.period, zones: data.zones, designated: data.designated, towingHotspots: data.towingHotspots };
+    return { status: 'ready', builtAt: data.builtAt, month: data.month ?? null, period: data.period, zones: data.zones, designated: data.designated, towingHotspots: data.towingHotspots };
   } catch (error) { return { status: error.code === 'ENOENT' ? 'unconfigured' : 'error', zones: [], designated: [], towingHotspots: [] }; }
 }
 
-// Verdicts at a moment from the shared engine; parked/available stay unknown until an operator shares inventory.
+// Verdicts at a moment; parked/available stay unknown until an operator shares inventory.
 export function publicZonesAt(zones, at) {
   return zones.map((zone) => {
-    const result = evaluateRelative(zone, at);
-    const hour = new Date(new Date(at).getTime() + KST).getUTCHours();
-    return { ...zone, ...result, currentPedestrianCount15Min: null, crowdCount: zone.hourlyCounts[hour] ?? null, crowdLabel: `${zone.basis.stationName}역 ${hour}시 승하차(일평균)`,
-      parked: null, available: null, nextChange: nextScheduledChange(zone, at), observedAt: new Date(at).toISOString(),
-      observationSource: `${RIDERSHIP_SOURCE.name} ${zone.basis.month} · ${zone.basis.stationName}역(${zone.basis.stationDistanceM}m)` };
+    const { station, walk, ...rest } = zone;
+    const result = evaluateArea(zone, at);
+    return { ...rest, ...result, crowdLabel: station ? `${station.name}역 ${new Date(new Date(at).getTime() + KST).getUTCHours()}시 승하차(일평균)` : null,
+      basis: { ...zone.basis, station: station && { name: station.name, distanceM: station.distanceM, month: station.month }, walk: walk && { spotName: walk.spotName, distanceM: walk.distanceM, widthM: walk.widthM, walkway: walk.walkway, obstacle: walk.obstacle, losUsable: walk.layouts.length > 0 } },
+      parked: null, available: null, nextChange: null, observedAt: new Date(at).toISOString(),
+      observationSource: [station && `${RIDERSHIP_SOURCE.name} ${station.month}`, walk && SIDEWALK_SOURCE.name, `구역 모양 ${OSM_SOURCE.name}`].filter(Boolean).join(' · ') };
   });
 }
