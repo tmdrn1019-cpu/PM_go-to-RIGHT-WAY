@@ -8,6 +8,9 @@ import { Link } from '@astryxdesign/core/Link';
 import { Divider } from '@astryxdesign/core/Divider';
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
 import { Thumbnail } from '@astryxdesign/core/Thumbnail';
+import { Card } from '@astryxdesign/core/Card';
+import { Selector } from '@astryxdesign/core/Selector';
+import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import ZoneMap from './ZoneMap';
 // MapLibre is large; load it only when a mission starts.
 const WalkMap3D = lazy(() => import('./WalkMap3D'));
@@ -22,7 +25,9 @@ const STEPS = ['킥보드 선택', '끌고 이동', '사진 확인'];
 const WALK_STEPS = 4; const GLIDE_MS = 1200;
 const moveText = (exit) => exit.designated ? `${exit.name}까지 ${exit.distanceM}m` : `${exit.distanceM}m만`;
 const time = (value) => new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value));
-const row = { borderBottom: 'var(--border-width) solid var(--color-border)' };
+// Prose sits in tinted cards; full-width filled shapes are only ever tappable actions.
+const Box = ({ tone = 'muted', children }) => <Card variant={tone} padding={4}><VStack gap={2}>{children}</VStack></Card>;
+const Act = (props) => <Button size="lg" width="100%" variant="primary" {...props} />;
 
 export default function MobileDemo() {
   const [state, setState] = useState(null); const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false);
@@ -131,99 +136,106 @@ export default function MobileDemo() {
   useEffect(() => { if (firstSpot && me.label === SPOTS[0].label) setMe({ ...returnSpots[0], accuracy: 0 }); }, [firstSpot]); // eslint-disable-line react-hooks/exhaustive-deps
   const pickSpot = (spot) => { setMe({ ...spot, accuracy: 0 }); setReturned(null); takeShot(null); setMessage(''); };
   const statusText = { open: '주차존 개방', reduced: '일부 개방', closed: '페널티 유지', unknown: '확인 중' };
+  const statusTone = { open: 'green', reduced: 'orange', closed: 'red' };
+  // One dropdown for where I am: my GPS, or a demo spot.
+  const spotPicker = (spots, onPick) => <Selector label="위치" width="100%" value={me.label} isDisabled={locating || locked}
+    options={[{ value: '내 위치', label: locating ? '내 위치 확인 중…' : '내 위치' }, ...spots.map((s) => s.label)]}
+    onChange={(value) => (value === '내 위치' ? locate() : onPick(spots.find((s) => s.label === value)))} />;
+  const alert = message && <Card variant="yellow" padding={3}><Text aria-live="assertive" weight="bold">{message}</Text></Card>;
+  const cameraInput = <input ref={camera} type="file" accept="image/*" capture="environment" hidden aria-hidden="true" tabIndex={-1} onChange={(e) => { takeShot(e.target.files?.[0] ?? null); e.target.value = ''; }} />;
   const returnSheet = <VStack gap={4}>
     <Heading level={2}>여기에 반납할까요?</Heading>
-    <HStack gap={2} wrap="wrap">
-      <Button label={locating ? '확인 중' : '내 위치'} size="sm" variant={me.label === '내 위치' ? 'primary' : 'secondary'} isLoading={locating} onClick={() => { setReturned(null); takeShot(null); locate(); }} />
-      {returnSpots.map((spot) => <Button key={spot.label} label={spot.label} size="sm" variant={me.label === spot.label ? 'primary' : 'ghost'} aria-pressed={me.label === spot.label} onClick={() => pickSpot(spot)} />)}
-    </HStack>
-    {message && <Text aria-live="assertive" weight="bold">{message}</Text>}
-    {!crowd ? <Text role="status">페널티 구역을 확인하고 있어요.</Text> : crowd.failed ? <Text>페널티 구역 정보를 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요.</Text>
-    : returned ? <VStack gap={3}>
-      <Heading level={3}>{returned === 'ok' ? '반납 완료 (모의)' : '다시 세워 주세요 (모의)'}</Heading>
-      <Text>{returned === 'ok' ? '보행을 막지 않는 자리로 확인했어요.' : '횡단보도·점자블록·보도 중앙·차도를 막지 않게 옮겨 세운 뒤 다시 찍어 주세요. 견인되면 운영사가 4만 원과 보관료를 냅니다.'}</Text>
-      <Button label={returned === 'ok' ? '처음으로' : '다시 찍기'} onClick={() => { setReturned(null); takeShot(null); }} />
-    </VStack>
-    : !zoneHere ? <VStack gap={3}>
-      <Text type="large">견인 위험 구역이 아니에요. 사진 없이 바로 반납돼요.</Text>
-      <Text type="supporting">횡단보도·점자블록·차도는 어디서든 막지 마세요.</Text>
-      <Button label="반납하기 (모의)" onClick={() => setReturned('ok')} />
-    </VStack> : <VStack gap={3}>
-      <Text type="label" style={{ color: `var(--color-text-${({ open: 'success', reduced: 'warning', closed: 'error' })[zoneHere.status] ?? 'secondary'})` }}>{statusText[zoneHere.status]} · {zoneHere.name}</Text>
-      <Text>{zoneHere.reason}</Text>
-      <Text type="large">견인 위험 구역이에요. 세워 둔 모습을 한 장 찍어 주세요.</Text>
-      <Text type="supporting">2025년 이 칸 주변 견인 {zoneHere.towingCount}건. 사진에서 차도 위 · 보도 중앙 · 횡단보도 · 점자블록을 막는지 봅니다.</Text>
-      <input ref={camera} type="file" accept="image/*" capture="environment" hidden aria-hidden="true" tabIndex={-1} onChange={(e) => { takeShot(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+    {spotPicker(returnSpots, pickSpot)}
+    {alert}
+    {!crowd ? <Box><Text role="status">페널티 구역을 확인하고 있어요.</Text></Box> : crowd.failed ? <Box><Text>페널티 구역 정보를 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요.</Text></Box>
+    : returned ? <>
+      <Box tone={returned === 'ok' ? 'green' : 'orange'}>
+        <Heading level={3}>{returned === 'ok' ? '반납 완료 (모의)' : '다시 세워 주세요 (모의)'}</Heading>
+        <Text>{returned === 'ok' ? '보행을 막지 않는 자리로 확인했어요.' : '횡단보도·점자블록·보도 중앙·차도를 막지 않게 옮긴 뒤 다시 찍어 주세요.'}</Text>
+      </Box>
+      <Act label={returned === 'ok' ? '처음으로' : '다시 찍기'} onClick={() => { setReturned(null); takeShot(null); }} />
+    </>
+    : !zoneHere ? <>
+      <Box tone="green"><Text type="label">견인 위험 구역 아님</Text><Text>사진 없이 바로 반납돼요.</Text></Box>
+      <Act label="반납하기 (모의)" onClick={() => setReturned('ok')} />
+    </> : <>
+      <Box tone={statusTone[zoneHere.status] ?? 'muted'}>
+        <Text type="label">{statusText[zoneHere.status]} · {zoneHere.name}</Text>
+        <Text>{zoneHere.reason}</Text>
+      </Box>
+      <Box>
+        <Text type="label">견인 위험 구역 · 2025년 {zoneHere.towingCount}건</Text>
+        <Text>세워 둔 모습을 한 장 찍어 주세요. 차도·보도 중앙·횡단보도·점자블록을 막는지 봅니다.</Text>
+      </Box>
+      {cameraInput}
       {shot ? <>
         <Thumbnail src={shot.url} alt="찍은 반납 사진 미리보기" label={shot.name} />
-        <Text type="supporting">사진은 이 휴대폰에서만 보여 주고 서버로 보내지 않아요. AI 판독은 개발 예정이라, 시연에서는 결과를 직접 골라 흐름을 봅니다.</Text>
-        <HStack gap={2} wrap="wrap"><Button label="정상 반납으로 시연" onClick={() => setReturned('ok')} /><Button label="다시 세우기로 시연" variant="secondary" onClick={() => setReturned('again')} /></HStack>
-      </> : <Button label="카메라로 반납 사진 찍기" onClick={() => camera.current?.click()} />}
-    </VStack>}
-    <Text type="supporting">지도의 구역과 판정은 공공데이터(2025 견인 · 2026.10 승하차, 지금 시각 기준)이고, 강남구 시연 지역·50m 격자 칸·반납·사진 판독은 시연용 가정·모의 동작이에요. 이동 미션(부가 기능)의 합성 킥보드는 관악구에 있어요.</Text>
+        <Text type="supporting">사진은 서버로 보내지 않아요. AI 판독 전이라 결과를 직접 골라요.</Text>
+        <Act label="정상 반납으로 시연" onClick={() => setReturned('ok')} />
+        <Act label="다시 세우기로 시연" variant="secondary" onClick={() => setReturned('again')} />
+      </> : <Act label="카메라로 반납 사진 찍기" onClick={() => camera.current?.click()} />}
+    </>}
   </VStack>;
 
-  const sheet = !state ? <Text role="status">{message || '시연을 준비하고 있습니다.'}</Text> : <VStack gap={4}>
+  const sheet = !state ? <Box><Text role="status">{message || '시연을 준비하고 있습니다.'}</Text></Box> : <VStack gap={4}>
     <HStack gap={2} wrap="wrap">{STEPS.map((label, i) => <Text key={label} type="label" color={i === Math.min(step, 2) && !finished ? 'accent' : 'secondary'}>{i + 1}. {label}{i < 2 ? ' ›' : ''}</Text>)}</HStack>
-    {message && <Text aria-live="assertive" weight="bold">{message}</Text>}
+    {alert}
 
-    {finished ? <VStack gap={3}>
-      <Heading level={2}>이동 완료! +{state.policy.reward.toLocaleString('ko-KR')}P</Heading>
-      <Text>{finished}를 견인되는 자리에서 옮겼어요. 보도가 한결 넓어졌어요.</Text>
-      <Text type="supporting">시연 포인트입니다. 실제 지급은 운영사 제휴 후 정해집니다.</Text>
-      <Button label="다른 킥보드 보기" onClick={() => { setFinished(null); setMessage(''); }} />
-    </VStack> : active ? <VStack gap={3}>
-      <Heading level={2}>{active.scooterId} {arrived ? '세워 두기' : '끌고 이동 중'}</Heading>
-      {active.reason && <Text type="supporting">견인 사유: {active.reason}</Text>}
-      {active.status === 'verifying' ? <Text>사진에서 정주차를 확인하지 못했어요. 다시 찍어 주세요.</Text>
-        : arrived ? <Text>{protectedMove ? '지정 주차구역 안에 세웠다면' : '빨간 원 밖에 세웠다면'} 주차 모습을 찍어 제출해 주세요.</Text>
-        : <Text type="large">{protectedMove ? `${active.destinationName}까지` : active.clearM ? `빨간 원(${active.reason}에서 ${active.clearM}m) 밖으로` : '빨간 원(견인 구역) 밖으로'} 걸어서 끌고 가 주세요. 타고 이동하지 마세요.</Text>}
-      <Text type="supporting">{time(active.expiresAt)}까지 · {protectedMove ? '지도 선은 직선 안내예요. 실제 보도를 따라 가 주세요' : '원 밖이면 어디든 괜찮아요'}{active.alarmed ? ' · 경로 이탈 경보 발생' : ''}</Text>
-      {!arrived ? <VStack gap={2}>
-        <Button label={walkStep ? `끌고 이동 중 ${walkStep}/${WALK_STEPS}` : '끌고 이동 시작 (시연)'} isLoading={walkStep > 0} isDisabled={locked} onClick={walk} />
-        <Text type="supporting" aria-live="polite">{walkStep ? `모의 위치 ${walkStep}/${WALK_STEPS}을 서버에 보내고 있어요.` : `시연에서는 경로를 따라 모의 위치 ${WALK_STEPS}개를 차례로 서버에 보내요. 지도의 킥보드는 서버가 받은 위치로만 움직여요.`}</Text>
-      </VStack> : <VStack gap={3}>
-        <input ref={camera} type="file" accept="image/*" capture="environment" hidden aria-hidden="true" tabIndex={-1} onChange={(e) => { takeShot(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+    {finished ? <>
+      <Box tone="green"><Heading level={2}>이동 완료! +{state.policy.reward.toLocaleString('ko-KR')}P</Heading><Text>{finished}를 견인되는 자리에서 옮겼어요. (시연 포인트)</Text></Box>
+      <Act label="다른 킥보드 보기" onClick={() => { setFinished(null); setMessage(''); }} />
+    </> : active ? <>
+      <Box>
+        <Heading level={2}>{active.scooterId} {arrived ? '세워 두기' : '끌고 이동 중'}</Heading>
+        {active.reason && <Text type="label">견인 사유: {active.reason}</Text>}
+        {active.status === 'verifying' ? <Text>사진에서 정주차를 확인하지 못했어요. 다시 찍어 주세요.</Text>
+          : arrived ? <Text>{protectedMove ? '지정 주차구역 안에 세웠다면' : '빨간 원 밖에 세웠다면'} 주차 모습을 찍어 제출해 주세요.</Text>
+          : <Text>{protectedMove ? `${active.destinationName}까지` : active.clearM ? `빨간 원(${active.reason}에서 ${active.clearM}m) 밖으로` : '빨간 원(견인 구역) 밖으로'} 걸어서 끌고 가 주세요. 타고 이동하지 마세요.</Text>}
+        <Text type="supporting">{time(active.expiresAt)}까지{protectedMove ? ' · 직선 안내예요' : ''}{active.alarmed ? ' · 경로 이탈 경보 발생' : ''}</Text>
+      </Box>
+      {!arrived ? <Act label={walkStep ? `끌고 이동 중 ${walkStep}/${WALK_STEPS}` : '끌고 이동 시작 (시연)'} isLoading={walkStep > 0} isDisabled={locked} onClick={walk} />
+      : <>
+        {cameraInput}
         {shot ? <>
           <Thumbnail src={shot.url} alt="찍은 주차 사진 미리보기" label={shot.name} />
-          <Text type="supporting">사진은 이 휴대폰 화면에서만 보여 주고 서버로 보내지 않아요. 정주차 판정은 모의 결과입니다.</Text>
-          <HStack gap={2} wrap="wrap"><Button label="이 사진으로 제출" isDisabled={locked} onClick={photo} /><Button label="다시 찍기" variant="secondary" isDisabled={locked} onClick={() => camera.current?.click()} /></HStack>
-        </> : <Button label="카메라로 주차 사진 찍기" isDisabled={locked} onClick={() => camera.current?.click()} />}
-      </VStack>}
-      <Button label="미션 취소" variant="ghost" isDisabled={locked} onClick={() => send({ type: 'cancel', missionId: active.id }, '미션을 취소했어요. 기기는 운영사가 확인합니다.')} />
-    </VStack> : chosen ? <VStack gap={3}>
-      <Heading level={2}>{chosen.id}</Heading>
-      <Text>나에게서 {Math.round(chosen.distance)}m · {chosen.towingReason ? `견인 사유: ${chosen.towingReason}` : '견인 다발 지점 밖'}</Text>
-      {chosen.exit ? <>
-        {chosen.rule.kind === 'protected' && <Text weight="bold">운영사 수거 대상이에요. 원하면 직접 옮길 수도 있어요.</Text>}
-        <Text type="large">{chosen.rule.guide} {moveText(chosen.exit)} 옮기면 {state.policy.reward.toLocaleString('ko-KR')}P</Text>
-        <Text type="supporting">{chosen.exit.designated ? '보호구역 경계 자료가 없어 가장 가까운 서울시 지정 PM 주차구역으로 안내해요. 정원 정보는 없고, 길 안내는 직선이며, 제한시간은 거리만큼 늘어나요.'
-          : `${chosen.rule.assumed ? `기준 ${chosen.rule.clearM}m는 시연 가정이에요.` : `규정 ${chosen.rule.clearM}m`}에 여유 ${state.policy.exitMarginM}m를 더했어요. 시설의 실제 위치 자료가 없어 기기 바로 옆에 있다고 가정해요.`}</Text>
-        <Button label="잠금 해제하고 시작" isDisabled={locked} onClick={() => start(chosen)} /></> : <Text>{chosen.handoff ? '운영사가 확인 중인 기기예요.' : chosen.towingKind === 'grace' ? '즉시 견인 사유가 아니라서 미션이 없어요.' : '정상 위치라 옮길 필요가 없어요.'}</Text>}
-      <Button label="목록으로" variant="ghost" onClick={() => setPicked(null)} />
-    </VStack> : <VStack gap={3}>
+          <Text type="supporting">사진은 서버로 보내지 않아요. 판정은 모의 결과예요.</Text>
+          <Act label="이 사진으로 제출" isDisabled={locked} onClick={photo} />
+          <Act label="다시 찍기" variant="secondary" isDisabled={locked} onClick={() => camera.current?.click()} />
+        </> : <Act label="카메라로 주차 사진 찍기" isDisabled={locked} onClick={() => camera.current?.click()} />}
+      </>}
+      <Act label="미션 취소" variant="secondary" isDisabled={locked} onClick={() => send({ type: 'cancel', missionId: active.id }, '미션을 취소했어요. 기기는 운영사가 확인합니다.')} />
+    </> : chosen ? <>
+      <Box>
+        <Heading level={2}>{chosen.id}</Heading>
+        <Text>나에게서 {Math.round(chosen.distance)}m · {chosen.towingReason ? `견인 사유: ${chosen.towingReason}` : '견인 다발 지점 밖'}</Text>
+        {chosen.exit ? <>
+          {chosen.rule.kind === 'protected' && <Text weight="bold">운영사 수거 대상이에요. 원하면 직접 옮길 수도 있어요.</Text>}
+          <Text type="large">{chosen.rule.guide} {moveText(chosen.exit)} 옮기면 {state.policy.reward.toLocaleString('ko-KR')}P</Text>
+          {chosen.exit.designated && <Text type="supporting">가장 가까운 서울시 지정 PM 주차구역으로 직선 안내해요.</Text>}
+        </> : <Text>{chosen.handoff ? '운영사가 확인 중인 기기예요.' : chosen.towingKind === 'grace' ? '즉시 견인 사유가 아니라서 미션이 없어요.' : '정상 위치라 옮길 필요가 없어요.'}</Text>}
+      </Box>
+      {chosen.exit && <Act label="잠금 해제하고 시작" isDisabled={locked} onClick={() => start(chosen)} />}
+      <Act label="목록으로" variant="secondary" onClick={() => setPicked(null)} />
+    </> : <>
       <HStack hAlign="between" vAlign="center" gap={2}><Heading level={2}>내 주변 킥보드</Heading><Text type="label" color="accent">미션 {nearby.filter((s) => s.exit).length}건</Text></HStack>
-      <HStack gap={2} wrap="wrap">
-        <Button label={locating ? '확인 중' : '내 위치'} size="sm" variant={me.label === '내 위치' ? 'primary' : 'secondary'} isLoading={locating} onClick={locate} />
-        {SPOTS.map((spot) => <Button key={spot.label} label={spot.label} size="sm" variant={me.label === spot.label ? 'primary' : 'ghost'} aria-pressed={me.label === spot.label} onClick={() => setMe({ ...spot, accuracy: 0 })} />)}
-      </HStack>
-      <VStack gap={0}>{nearby.map((s) => <HStack key={s.id} hAlign="between" vAlign="center" gap={2} paddingBlock={2} style={row}>
-        <VStack gap={0}><Text type="label">{s.id} · {Math.round(s.distance)}m</Text><Text type="supporting">{s.exit ? (s.rule.kind === 'protected' ? `보호구역 · 운영사 수거 대상 · 지정 구역까지 ${s.exit.distanceM}m` : `${s.towingReason} · ${s.exit.distanceM}m 이동`) : s.handoff ? '운영사 확인 중' : s.towingKind === 'grace' ? `${s.towingReason} · 즉시 견인 사유 아님` : '정상 주차'}</Text></VStack>
-        <Button label={s.exit ? '미션 가능' : '보기'} size="sm" variant={s.exit ? 'primary' : 'ghost'} onClick={() => setPicked(s.id)} />
-      </HStack>)}</VStack>
-      {!nearby.length && <Text type="supporting">{NEAR_M}m 안에 킥보드가 없어요. 시연 킥보드는 관악구에만 있어 위의 시연 위치를 골라 주세요.</Text>}
-    </VStack>}
+      {spotPicker(SPOTS, (spot) => setMe({ ...spot, accuracy: 0 }))}
+      {nearby.length ? <VStack gap={2}>{nearby.map((s) => <Card key={s.id} variant="muted" padding={3}><HStack hAlign="between" vAlign="center" gap={2}>
+        <VStack gap={0}><Text type="label">{s.id} · {Math.round(s.distance)}m</Text><Text type="supporting">{s.exit ? (s.rule.kind === 'protected' ? `보호구역 · 지정 구역까지 ${s.exit.distanceM}m` : `${s.towingReason} · ${s.exit.distanceM}m 이동`) : s.handoff ? '운영사 확인 중' : s.towingKind === 'grace' ? `${s.towingReason} · 즉시 견인 사유 아님` : '정상 주차'}</Text></VStack>
+        <Button label={s.exit ? '미션 보기' : '보기'} size="sm" variant={s.exit ? 'primary' : 'secondary'} onClick={() => setPicked(s.id)} />
+      </HStack></Card>)}</VStack>
+      : <Box><Text>{NEAR_M}m 안에 킥보드가 없어요. 위치를 시연 위치로 바꿔 주세요.</Text></Box>}
+    </>}
 
     <Divider />
-    <Button label={tools ? '시연 도구 닫기' : '시연 도구'} size="sm" variant="ghost" aria-expanded={tools} onClick={() => setTools((v) => !v)} />
+    <Button label={tools ? '시연 도구 닫기' : '시연 도구'} size="sm" variant="secondary" aria-expanded={tools} onClick={() => setTools((v) => !v)} />
     {tools && <VStack gap={3}>
-      <Text type="supporting">시연 시각 {time(state.now)} · 포인트 {state.points.toLocaleString('ko-KR')}P · 오늘 미션 {state.todayCount}/{state.policy.dailyLimit} · 운영사 인계 {state.operatorHandoffs}대</Text>
+      <Box><Text type="supporting">시연 시각 {time(state.now)} · 포인트 {state.points.toLocaleString('ko-KR')}P · 오늘 미션 {state.todayCount}/{state.policy.dailyLimit} · 운영사 인계 {state.operatorHandoffs}대</Text></Box>
       <CheckboxInput label="다음 잠금 해제를 실패로 시연" value={failUnlock} onChange={setFailUnlock} />
       <HStack gap={2} wrap="wrap">
         {active?.status === 'moving' && <Button label="경로 이탈 위치 보내기" size="sm" variant="secondary" isDisabled={locked} onClick={() => send({ type: 'position', missionId: active.id, point: [active.route[0][0] + 0.002, active.route[0][1] + 0.002], accuracy: 8, observedAt: state.now }, '경로를 벗어난 위치를 보냈어요 (모의 경보).')} />}
         {active && <Button label="사진 판별 불가로 제출" size="sm" variant="secondary" isDisabled={locked || !arrived} onClick={() => send({ type: 'complete', missionId: active.id, photoPresent: true, verdict: 'uncertain' }, '판별할 수 없어 포인트를 주지 않았어요.')} />}
         <Button label="10분 진행" size="sm" variant="secondary" isDisabled={locked} onClick={() => send({ type: 'advance', minutes: 10 }, '시연 시계를 10분 진행했어요.')} />
-        <Button label="시연 초기화" size="sm" variant="ghost" isDisabled={locked} onClick={() => { if (window.confirm('시연 미션·포인트·기록을 처음으로 되돌릴까요?')) { setFinished(null); setPicked(null); send({ type: 'reset', confirm: true }, '시연을 초기화했어요.'); } }} />
+        <Button label="시연 초기화" size="sm" variant="destructive" isDisabled={locked} onClick={() => { if (window.confirm('시연 미션·포인트·기록을 처음으로 되돌릴까요?')) { setFinished(null); setPicked(null); send({ type: 'reset', confirm: true }, '시연을 초기화했어요.'); } }} />
       </HStack>
       <VStack gap={1}>{state.events.slice(0, 8).map((e) => <Text key={e.id} type="supporting">{time(e.at)} · {e.message}</Text>)}</VStack>
     </VStack>}
@@ -240,7 +252,12 @@ export default function MobileDemo() {
         : <ZoneMap zones={active ? [] : crowd?.zones ?? []} designated={active ? [] : state?.designated ?? []} vehicles={mode === 'return' ? [] : missionVehicles} selectedVehicleId={active ? active.scooterId : picked} onVehicleSelect={onVehicleSelect} areas={mode === 'return' ? [] : areas} routes={active ? [active.route] : []} selectedId={null} onSelect={noop} onBoundsChange={noop} focus={focus} position={position} fitMaxZoom={active ? 19 : 17} />}
       </VStack>
       <VStack padding={4} gap={4} isScrollable style={{ flex: 1, minHeight: 0 }} aria-label={mode === 'return' ? '반납 패널' : '미션 패널'}>
-        {!active && <HStack gap={2}><Button label="반납" size="sm" variant={mode === 'return' ? 'primary' : 'ghost'} aria-pressed={mode === 'return'} onClick={() => { setMode('return'); setMessage(''); }} /><Button label="이동 미션 (부가 기능)" size="sm" variant={mode === 'mission' ? 'primary' : 'ghost'} aria-pressed={mode === 'mission'} onClick={() => { setMode('mission'); setMessage(''); }} /></HStack>}
+        {!active && <SegmentedControl label="기능" layout="fill" value={mode} onChange={(value) => {
+          // Each tab has its own demo area (return: 강남구 cells, mission: 관악구 scooters); my GPS position stays.
+          const spots = value === 'mission' ? SPOTS : returnSpots;
+          if (me.label !== '내 위치' && spots[0] && !spots.some((s) => s.label === me.label)) setMe({ ...spots[0], accuracy: 0 });
+          setMode(value); setMessage('');
+        }}><SegmentedControlItem value="return" label="반납" /><SegmentedControlItem value="mission" label="이동 미션" /></SegmentedControl>}
         {mode === 'return' && !active ? returnSheet : sheet}
       </VStack>
     </VStack>
