@@ -148,3 +148,26 @@ export function evaluateRelative(zone, at) {
   if (count >= t.reduce && capacities.length > 1) return { ...base, crowdRank, status: 'reduced', capacity: capacities.at(-1), reason: `${now} 서울 역·시간 상위 ${pct(t.reduceShare)}% 기준 ${n(t.reduce)}명 이상이라 수용 대수를 ${capacities.at(-1)}대로 줄입니다. 폐쇄 기준은 ${n(t.close)}명입니다.` };
   return { ...base, crowdRank, status: 'open', capacity: capacities[0], reason: count >= t.reduce ? `${now} 축소 기준 ${n(t.reduce)}명 이상이지만 줄일 배치가 없어 개방합니다.` : `${now} 서울 역·시간 상위 ${pct(t.reduceShare)}% 기준 ${n(t.reduce)}명보다 적어 개방합니다.` };
 }
+
+// Pivot (2026-11-22), rule from deck v8: an operator's penalty (no-return) area near a towing hotspot opens by the hour,
+// judged against the nearest station's own day: over its service hours (05~24시 = hours 5..23 and 0) the mean and population
+// σ of hourly ridership. mean+σ or more keeps the penalty ('closed'), the mean or more opens it in part ('reduced'), quieter
+// hours or hours under the Seoul station-hour median (t.median) open it as a parking zone ('open').
+export const PENALTY_SERVICE_HOURS = [...Array.from({ length: 19 }, (_, i) => i + 5), 0];
+export function penaltyCutoffs(hourly) {
+  const v = PENALTY_SERVICE_HOURS.map((h) => hourly?.[h]);
+  if (!Array.isArray(hourly) || hourly.length !== 24 || !hourly.every((n) => Number.isFinite(n) && n >= 0)) return null;
+  const mean = v.reduce((a, b) => a + b, 0) / v.length; const sd = Math.sqrt(v.reduce((a, b) => a + (b - mean) ** 2, 0) / v.length);
+  return sd > 0 ? { mean: Math.round(mean), keep: Math.round(mean + sd) } : null;
+}
+export function evaluatePenalty({ hourly, thresholds: t }, at) {
+  const time = new Date(at).getTime();
+  const count = Number.isFinite(time) ? hourly?.[new Date(time + OFFSET).getUTCHours()] : undefined;
+  const cut = penaltyCutoffs(hourly); const median = t?.median;
+  if (!cut || !Number.isFinite(count) || !(median > 0)) return { status: 'unknown', crowdCount: null, cutoffs: null, reason: '이 시간 승하차 자료나 판정 기준이 없어 판정하지 않습니다. 페널티 구역을 그대로 둡니다.' };
+  const n = (v) => v.toLocaleString('ko-KR');
+  const now = `이 시간 승하차는 ${n(count)}명(일평균)으로`; const base = { crowdCount: count, cutoffs: { ...cut, median } };
+  if (count >= cut.keep) return { ...base, status: 'closed', reason: `${now} 이 역 평균+1표준편차 ${n(cut.keep)}명 이상(첨두)이라 페널티를 유지합니다.` };
+  if (count >= cut.mean && count >= median) return { ...base, status: 'reduced', reason: `${now} 이 역 평균 ${n(cut.mean)}명 이상이라 일부만 엽니다. 첨두 기준은 ${n(cut.keep)}명입니다.` };
+  return { ...base, status: 'open', reason: count < median ? `${now} 서울 역·시간 중앙값 ${n(median)}명보다 적어 주차존으로 엽니다.` : `${now} 이 역 평균 ${n(cut.mean)}명보다 적어 주차존으로 엽니다.` };
+}

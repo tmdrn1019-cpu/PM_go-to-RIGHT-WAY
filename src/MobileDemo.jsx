@@ -26,6 +26,8 @@ const row = { borderBottom: 'var(--border-width) solid var(--color-border)' };
 
 export default function MobileDemo() {
   const [state, setState] = useState(null); const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false);
+  // Main flow (pivot 2026-11-22): return a scooter; only inside a towing-risk (penalty) area does it ask for one photo.
+  const [mode, setMode] = useState('return'); const [returned, setReturned] = useState(null);
   const [me, setMe] = useState({ ...SPOTS[0], accuracy: 0 }); const [locating, setLocating] = useState(false);
   const [picked, setPicked] = useState(null); const [finished, setFinished] = useState(null);
   const [no3d, setNo3d] = useState(false); const on3dFail = useCallback(() => setNo3d(true), []);
@@ -36,16 +38,16 @@ export default function MobileDemo() {
   useEffect(() => () => { if (shot) URL.revokeObjectURL(shot.url); }, [shot]);
   const load = useCallback(() => fetch('/api/demo/state', { cache: 'no-store' }).then((r) => r.ok ? r.json() : r.json().then((d) => Promise.reject(new Error(d.error)))).then(setState).catch((e) => setMessage(e.message || '시연 상태를 불러오지 못했습니다.')), []);
   useEffect(() => { load(); }, [load]);
-  // Live crowd zones (same public verdicts as /service, at the real time): only crowded pieces exist as zones. Refreshed every
-  // minute; on failure they are dropped rather than left stale.
+  // Live penalty zones (same public verdicts as /service, at the real time). Refreshed every minute; on failure they are
+  // dropped rather than left stale.
   const [crowd, setCrowd] = useState(null);
   useEffect(() => {
     let controller;
     const refresh = () => {
       controller?.abort(); controller = new AbortController();
-      fetch(`/api/zones?active=1&at=${encodeURIComponent(new Date().toISOString())}`, { cache: 'no-store', signal: controller.signal })
+      fetch(`/api/zones?at=${encodeURIComponent(new Date().toISOString())}`, { cache: 'no-store', signal: controller.signal })
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error('zones'))))
-        .then((d) => setCrowd({ at: d.at, zones: d.status === 'ready' ? d.zones.filter((z) => z.kind === 'area' && (z.status === 'closed' || z.status === 'reduced')) : [] }))
+        .then((d) => setCrowd({ at: d.at, zones: d.status === 'ready' ? d.zones.filter((z) => z.kind === 'penalty') : [] }))
         .catch(() => { if (!controller.signal.aborted) setCrowd({ failed: true, zones: [] }); });
     };
     refresh(); const timer = setInterval(refresh, 60_000);
@@ -83,7 +85,7 @@ export default function MobileDemo() {
     ...(state?.towingSpots ?? []).map((h) => ({ point: h.point, radiusM: 30, label: `${h.address} · 2025 견인 ${h.count}건 (가정 반경 30m · 금지 경계 아님)` }))], [state]);
   // Frame me and the nearby PMs together (the map is short); during a mission, frame the route.
   const nearbyKey = nearby.map((s) => s.id).join();
-  useEffect(() => { setFocus(active ? { points: active.route } : nearby.length ? { points: [me.point, ...nearby.map((s) => s.point)] } : { point: me.point }); }, [me, nearbyKey, active?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setFocus(active ? { points: active.route } : mode === 'return' ? { point: me.point } : nearby.length ? { points: [me.point, ...nearby.map((s) => s.point)] } : { point: me.point }); }, [me, nearbyKey, active?.id, mode]); // eslint-disable-line react-hooks/exhaustive-deps
   const onVehicleSelect = useCallback((id) => { setPicked(id); setFinished(null); }, []);
   const noop = useCallback(() => {}, []);
 
@@ -116,6 +118,50 @@ export default function MobileDemo() {
   };
   const step = finished ? 3 : !active ? 0 : arrived ? 2 : 1;
   const protectedMove = active?.kind === 'protected';
+
+  const inCell = ([lat, lng], [south, west, north, east]) => lat >= south && lat <= north && lng >= west && lng <= east;
+  const zoneHere = (crowd?.zones ?? []).find((z) => inCell(me.point, z.bounds));
+  // Demo spots in 강남구: the busiest towing addresses' first cell, and a point just north of the top one that no cell covers.
+  const firsts = [...new Map((crowd?.zones ?? []).map((z) => [z.address, z])).values()].slice(0, 3);
+  const outside = firsts[0] && [firsts[0].bounds[2] + 0.0015, firsts[0].point[1]];
+  const returnSpots = [...firsts.map((z) => ({ label: `${z.address.replace(/^서울특별시 \S+구 /, '')} (구역 안)`, point: z.point })),
+    ...(outside && !(crowd?.zones ?? []).some((z) => inCell(outside, z.bounds)) ? [{ label: '구역 밖 (예시 위치)', point: outside }] : [])];
+  // Start the return demo inside the first 강남구 cell instead of the mission demo's 관악구 standpoint.
+  const firstSpot = returnSpots[0]?.label;
+  useEffect(() => { if (firstSpot && me.label === SPOTS[0].label) setMe({ ...returnSpots[0], accuracy: 0 }); }, [firstSpot]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pickSpot = (spot) => { setMe({ ...spot, accuracy: 0 }); setReturned(null); takeShot(null); setMessage(''); };
+  const statusText = { open: '주차존 개방', reduced: '일부 개방', closed: '페널티 유지', unknown: '확인 중' };
+  const returnSheet = <VStack gap={4}>
+    <Heading level={2}>여기에 반납할까요?</Heading>
+    <HStack gap={2} wrap="wrap">
+      <Button label={locating ? '확인 중' : '내 위치'} size="sm" variant={me.label === '내 위치' ? 'primary' : 'secondary'} isLoading={locating} onClick={() => { setReturned(null); takeShot(null); locate(); }} />
+      {returnSpots.map((spot) => <Button key={spot.label} label={spot.label} size="sm" variant={me.label === spot.label ? 'primary' : 'ghost'} aria-pressed={me.label === spot.label} onClick={() => pickSpot(spot)} />)}
+    </HStack>
+    {message && <Text aria-live="assertive" weight="bold">{message}</Text>}
+    {!crowd ? <Text role="status">페널티 구역을 확인하고 있어요.</Text> : crowd.failed ? <Text>페널티 구역 정보를 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요.</Text>
+    : returned ? <VStack gap={3}>
+      <Heading level={3}>{returned === 'ok' ? '반납 완료 (모의)' : '다시 세워 주세요 (모의)'}</Heading>
+      <Text>{returned === 'ok' ? '보행을 막지 않는 자리로 확인했어요.' : '횡단보도·점자블록·보도 중앙·차도를 막지 않게 옮겨 세운 뒤 다시 찍어 주세요. 견인되면 운영사가 4만 원과 보관료를 냅니다.'}</Text>
+      <Button label={returned === 'ok' ? '처음으로' : '다시 찍기'} onClick={() => { setReturned(null); takeShot(null); }} />
+    </VStack>
+    : !zoneHere ? <VStack gap={3}>
+      <Text type="large">견인 위험 구역이 아니에요. 사진 없이 바로 반납돼요.</Text>
+      <Text type="supporting">횡단보도·점자블록·차도는 어디서든 막지 마세요.</Text>
+      <Button label="반납하기 (모의)" onClick={() => setReturned('ok')} />
+    </VStack> : <VStack gap={3}>
+      <Text type="label" style={{ color: `var(--color-text-${({ open: 'success', reduced: 'warning', closed: 'error' })[zoneHere.status] ?? 'secondary'})` }}>{statusText[zoneHere.status]} · {zoneHere.name}</Text>
+      <Text>{zoneHere.reason}</Text>
+      <Text type="large">견인 위험 구역이에요. 세워 둔 모습을 한 장 찍어 주세요.</Text>
+      <Text type="supporting">2025년 이 칸 주변 견인 {zoneHere.towingCount}건. 사진에서 차도 위 · 보도 중앙 · 횡단보도 · 점자블록을 막는지 봅니다.</Text>
+      <input ref={camera} type="file" accept="image/*" capture="environment" hidden aria-hidden="true" tabIndex={-1} onChange={(e) => { takeShot(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+      {shot ? <>
+        <Thumbnail src={shot.url} alt="찍은 반납 사진 미리보기" label={shot.name} />
+        <Text type="supporting">사진은 이 휴대폰에서만 보여 주고 서버로 보내지 않아요. AI 판독은 개발 예정이라, 시연에서는 결과를 직접 골라 흐름을 봅니다.</Text>
+        <HStack gap={2} wrap="wrap"><Button label="정상 반납으로 시연" onClick={() => setReturned('ok')} /><Button label="다시 세우기로 시연" variant="secondary" onClick={() => setReturned('again')} /></HStack>
+      </> : <Button label="카메라로 반납 사진 찍기" onClick={() => camera.current?.click()} />}
+    </VStack>}
+    <Text type="supporting">지도의 구역과 판정은 공공데이터(2025 견인 · 2026.10 승하차, 지금 시각 기준)이고, 강남구 시연 지역·50m 격자 칸·반납·사진 판독은 시연용 가정·모의 동작이에요. 이동 미션(부가 기능)의 합성 킥보드는 관악구에 있어요.</Text>
+  </VStack>;
 
   const sheet = !state ? <Text role="status">{message || '시연을 준비하고 있습니다.'}</Text> : <VStack gap={4}>
     <HStack gap={2} wrap="wrap">{STEPS.map((label, i) => <Text key={label} type="label" color={i === Math.min(step, 2) && !finished ? 'accent' : 'secondary'}>{i + 1}. {label}{i < 2 ? ' ›' : ''}</Text>)}</HStack>
@@ -186,14 +232,17 @@ export default function MobileDemo() {
   // During a mission the walker and the scooter share the last server-accepted point (or the glide toward it).
   const missionPoint = active && (walkPoint ?? active.position?.point ?? active.route[0]);
   const missionVehicles = active ? [{ id: active.scooterId, point: missionPoint, label: `${active.scooterId} · 끌고 이동 중 (시연·모의 위치)` }] : vehicles;
-  const position = active?.position || walkPoint ? { point: missionPoint, accuracy: active.position?.accuracy ?? 8 } : { point: me.point, accuracy: me.accuracy || 8 };
+  const position = mode === 'return' && !active ? { point: me.point, accuracy: me.accuracy || 8 } : active?.position || walkPoint ? { point: missionPoint, accuracy: active.position?.accuracy ?? 8 } : { point: me.point, accuracy: me.accuracy || 8 };
   return <AppShell height="fill" variant="surface" topNav={<TopNav label="시민 앱 시연" heading={<Link href="/" type="large" weight="bold">PM 주차존</Link>} startContent={<Text type="supporting">시연 · 합성 자료</Text>} endContent={<Text type="label">{state ? `${state.points.toLocaleString('ko-KR')}P` : ''}</Text>} />}>
     <VStack height="100%" gap={0} style={{ minHeight: 0 }}>
       <VStack style={{ height: '45%', minHeight: 0, position: 'relative', flexShrink: 0 }}>
         {active && !no3d ? <Suspense fallback={<Text role="status">3D 지도를 불러오고 있어요.</Text>}><WalkMap3D route={active.route} point={missionPoint} clearM={active.clearM} startLabel={`견인 위치 · ${active.reason ?? '견인 구역'}`} targetLabel={protectedMove ? active.destinationName : '옮길 목표 지점 (원 밖 아무 곳)'} scooterLabel={`${active.scooterId} · 끌고 이동 중 (시연·모의 위치)`} onFail={on3dFail} /></Suspense>
-        : <ZoneMap zones={active ? [] : crowd?.zones ?? []} designated={active ? [] : state?.designated ?? []} vehicles={missionVehicles} selectedVehicleId={active ? active.scooterId : picked} onVehicleSelect={onVehicleSelect} areas={areas} routes={active ? [active.route] : []} selectedId={null} onSelect={noop} onBoundsChange={noop} focus={focus} position={position} fitMaxZoom={active ? 19 : 17} />}
+        : <ZoneMap zones={active ? [] : crowd?.zones ?? []} designated={active ? [] : state?.designated ?? []} vehicles={mode === 'return' ? [] : missionVehicles} selectedVehicleId={active ? active.scooterId : picked} onVehicleSelect={onVehicleSelect} areas={mode === 'return' ? [] : areas} routes={active ? [active.route] : []} selectedId={null} onSelect={noop} onBoundsChange={noop} focus={focus} position={position} fitMaxZoom={active ? 19 : 17} />}
       </VStack>
-      <VStack padding={4} gap={4} isScrollable style={{ flex: 1, minHeight: 0 }} aria-label="미션 패널">{sheet}</VStack>
+      <VStack padding={4} gap={4} isScrollable style={{ flex: 1, minHeight: 0 }} aria-label={mode === 'return' ? '반납 패널' : '미션 패널'}>
+        {!active && <HStack gap={2}><Button label="반납" size="sm" variant={mode === 'return' ? 'primary' : 'ghost'} aria-pressed={mode === 'return'} onClick={() => { setMode('return'); setMessage(''); }} /><Button label="이동 미션 (부가 기능)" size="sm" variant={mode === 'mission' ? 'primary' : 'ghost'} aria-pressed={mode === 'mission'} onClick={() => { setMode('mission'); setMessage(''); }} /></HStack>}
+        {mode === 'return' && !active ? returnSheet : sheet}
+      </VStack>
     </VStack>
   </AppShell>;
 }

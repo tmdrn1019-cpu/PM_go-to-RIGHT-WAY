@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
-import { buildAreaZones, evaluateArea, ringStats, clipToBox, gridPieces, stationProfiles, readPublicZones, syntheticFleet, towingRisk, SYNTHETIC_RULES, inZoneDistricts } from '../server/public-zones.mjs';
+import { buildAreaZones, buildPenaltyZones, inCell, evaluateArea, ringStats, clipToBox, gridPieces, stationProfiles, readPublicZones, syntheticFleet, towingRisk, SYNTHETIC_RULES, inZoneDistricts } from '../server/public-zones.mjs';
 import { distanceM } from '../server/engine.mjs';
 import { createServiceApp } from '../server/service-app.mjs';
 
@@ -76,21 +76,28 @@ test('crowd zones are small grid pieces near a station or survey spot; the stric
 test('zones API serves the built file, rejects bad times and reports a missing or old file', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'zones-')); const file = join(dir, 'public-zones.json');
   const zones = buildAreaZones({ areas: areaList, spots: [spot, farSpot, mapo], stations, month: '202610' });
-  writeFileSync(file, JSON.stringify({ version: 7, builtAt: 'b', period: 'p', month: '202610', zones, designated, towingHotspots: areas }));
+  // A far address (no station within 300m) and a non-강남구 address next to the station are both left out.
+  const penaltyZones = buildPenaltyZones({ hotspots: [...areas, { id: 'far', address: '서울특별시 강남구 x', district: '강남구', count: 9, point: [37.60, 127.10] }, { id: 'gw', address: '서울특별시 관악구 y', district: '관악구', count: 99, point: [37.501, 127.036] }], stations, month: '202610' });
+  writeFileSync(file, JSON.stringify({ version: 7, builtAt: 'b', period: 'p', month: '202610', zones, penaltyZones, designated, towingHotspots: areas }));
   const server = createServiceApp({ feedPath: '', publicData: { apiKey: '' }, publicZonesFile: file }).listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(async () => { await new Promise((resolve) => server.close(resolve)); rmSync(dir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${server.address().port}`;
-  const body = await (await fetch(`${base}/api/zones?at=${encodeURIComponent('2026-11-20T22:30:00+09:00')}`)).json();
-  assert.equal(body.status, 'ready'); assert.equal(body.zones.length, zones.length);
-  assert.equal(body.zones[0].status, 'closed'); assert.equal(body.zones[0].station, undefined); assert.equal(body.zones[0].basis.station.name, '역삼');
-  assert.deepEqual(body.designated.map((d) => d.id), ['pk-1', 'pk-2']);
-  // active=1 returns only pieces that are a zone right now, with counts over every watched piece.
-  const morning = await (await fetch(`${base}/api/zones?active=1&at=${encodeURIComponent('2026-11-20T08:30:00+09:00')}`)).json();
-  assert.equal(morning.counts.watched, zones.length);
-  assert.equal(morning.zones.length, morning.counts.reduced + morning.counts.closed);
-  assert.ok(morning.zones.every((z) => z.status === 'reduced' || z.status === 'closed'));
-  const night = await (await fetch(`${base}/api/zones?active=1&at=${encodeURIComponent('2026-11-20T22:30:00+09:00')}`)).json();
-  assert.ok(night.zones.length > 0 && night.zones.length === night.counts.closed + night.counts.reduced);
+  // Only hotspots within 300m of a station become penalty zones; 역삼 rides (h+1)*100/h, its own mean 1,430 opens in part and mean+σ 2,045 keeps.
+  // Square 50m grid cells touched by a 30m circle around each address; cells shared by both addresses merge.
+  assert.deepEqual([...new Set(penaltyZones.flatMap((z) => z.towingAddresses.map((h) => h.address)))].sort(), ['서울특별시 강남구 역삼동 804', '서울특별시 강남구 역삼동 805']);
+  assert.equal(new Set(penaltyZones.map((z) => z.id)).size, penaltyZones.length);
+  assert.ok(penaltyZones.length >= 4 && penaltyZones.every((z) => z.boundary.length === 5 && Math.abs(distanceM(z.boundary[0], z.boundary[1]) - 50) < 1 && Math.abs(distanceM(z.boundary[1], z.boundary[2]) - 50) < 1));
+  assert.ok(penaltyZones.every((z) => z.towingAddresses.some((h) => distanceM(areas.find((a) => a.address === h.address).point, z.point) <= 30 + 36)));
+  for (const a of areas) assert.ok(penaltyZones.some((z) => inCell(a.point, z.bounds)));
+  assert.equal(penaltyZones.find((z) => inCell(areas[0].point, z.bounds)).towingCount >= 478, true);
+  const at = async (time) => (await fetch(`${base}/api/zones?at=${encodeURIComponent(time)}`)).json();
+  const night = await at('2026-11-20T22:30:00+09:00');
+  const n = penaltyZones.length; assert.equal(night.status, 'ready'); assert.equal(night.zones.length, n); assert.deepEqual(night.counts, { penalty: n, open: 0, reduced: 0, closed: n });
+  assert.equal(night.zones[0].kind, 'penalty'); assert.equal(night.zones[0].station, undefined); assert.equal(night.zones[0].basis.station.name, '역삼'); assert.equal(night.zones[0].crowdCount, 2300);
+  // Only 강남구 designated zones are in the demo area.
+  assert.deepEqual(night.designated.map((d) => d.id), ['pk-1']);
+  assert.equal((await at('2026-11-20T16:30:00+09:00')).zones[0].status, 'reduced');
+  assert.equal((await at('2026-11-20T08:30:00+09:00')).zones[0].status, 'open');
   const fleet = await (await fetch(`${base}/api/zones/synthetic-pm`)).json();
   assert.equal(fleet.synthetic, true); assert.equal(fleet.riskRadiusM, 30); assert.ok(fleet.vehicles.some((v) => v.risk));
   assert.ok(fleet.hotspots.length > 0 && fleet.hotspots.every((h) => Object.keys(h).join() === 'address,count,point'));

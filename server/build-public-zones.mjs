@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from '
 import { aggregateTowing } from './towing.mjs';
 import { collectGeocodes } from './sgis.mjs';
 import { createSeoulData, boundedJson } from './seoul-data.mjs';
-import { buildAreaZones, stationProfiles, inZoneDistricts } from './public-zones.mjs';
+import { buildAreaZones, buildPenaltyZones, stationProfiles, inZoneDistricts } from './public-zones.mjs';
 
 const [towingPath] = process.argv.slice(2);
 // shortcut: only the top towing addresses are geocoded; raise TOP if hotspots outside them start to matter.
@@ -46,9 +46,10 @@ try {
   // v7 also carries every geocoded designated zone and towing address for the map's extra layers and the synthetic fleet.
   const designatedOut = designated.filter(inZoneDistricts).map(({ id, name, address, point }) => ({ id, name, address, point }));
   const towingHotspots = towing.areas.filter((a) => a.point && inZoneDistricts(a)).map(({ id, address, district, count, point }) => ({ id, address, district, count, point }));
-  writeFileSync(temporary, JSON.stringify({ version: 7, builtAt: new Date().toISOString(), period, month, zones, designated: designatedOut, towingHotspots }, null, 2));
+  const penaltyZones = buildPenaltyZones({ hotspots: towingHotspots, stations, month });
+  writeFileSync(temporary, JSON.stringify({ version: 7, builtAt: new Date().toISOString(), period, month, zones, penaltyZones, designated: designatedOut, towingHotspots }, null, 2));
   renameSync(temporary, 'data/public-zones.json');
-  console.log(`승하차 ${month} · 역 ${stations.length}곳 · 구역 존 ${zones.length}곳 (역 자료 ${zones.filter((z) => z.station).length} · 보도 LOS 자료 ${zones.filter((z) => z.walk?.layouts.length).length})`);
+  console.log(`승하차 ${month} · 역 ${stations.length}곳 · 구역 존 ${zones.length}곳 · 페널티 구역 ${penaltyZones.length}곳 (역 자료 ${zones.filter((z) => z.station).length} · 보도 LOS 자료 ${zones.filter((z) => z.walk?.layouts.length).length})`);
 } catch (error) { console.error(error.message); process.exitCode = 1; }
 
 // OSM land-use area polygons over the chosen districts' bounding box, cached in data/osm-areas.json (delete it to refetch).

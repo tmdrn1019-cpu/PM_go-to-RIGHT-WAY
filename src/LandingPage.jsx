@@ -54,29 +54,29 @@ const band = (tone) => ({ ...screen, background: tone === 'light' ? 'var(--color
 const inner = { width: '100%', maxWidth: '64rem' };
 
 const audiences = {
-  operator: { label: '운영사', title: '반납 가능한 곳을 시간대별로', text: '주차존마다 지금 열려 있는지, 몇 대까지 받을 수 있는지 확인합니다.', points: ['존별 개방·축소·폐쇄 상태', '폐쇄 전 수용량 단계 조절', '남은 기기 이동 미션 (연동 예정)'] },
-  district: { label: '자치구', title: '어디에, 언제 열지 데이터로', text: '견인 이력과 보행 자료로 주차존 후보지와 운영시간을 분석합니다.', points: ['견인 다발 주소별 분석', '주차존 후보 탐색지', '시간대별 운영 분석'] },
-  citizen: { label: '시민', title: '가까운 열린 주차존을 바로', text: '휴대폰 지도에서 주변 주차존의 상태와 반납 가능 대수를 확인합니다.', points: ['지도와 목록으로 상태 확인', '킥보드·전기자전거별 찾기', '걸어서 옮기는 이동 미션 (준비 중)'] },
+  operator: { label: '운영사', title: '페널티 구역을 시간마다 열고 닫기', text: '앱의 페널티 구역을 견인·혼잡 데이터로 시간마다 판정해, 한산한 시간에는 주차존으로 엽니다.', points: ['구역별 페널티 유지 · 일부 개방 · 주차존 개방', '견인 위험 구역에서만 사진 판독', '견인 비용 절감 · 반납할 곳이 늘어 이용률 증가'] },
+  district: { label: '자치구', title: '어디가, 언제 붐비는지 데이터로', text: '견인 이력과 지하철 승하차로 페널티 구역과 주차구역의 운영 시간을 분석합니다.', points: ['견인 다발 주소별 분석', '역 주변 시간대별 혼잡 판정', '보행 안전 민원 근거'] },
+  citizen: { label: '이용자', title: '한산하면 바로 반납, 위험한 자리만 사진 한 장', text: '대부분의 자리에서는 그대로 반납하고, 견인 위험 구역에서만 사진으로 확인합니다.', points: ['지금 열린 구역을 지도에서 확인', '위험 구역 밖은 사진 없이 반납', '다시 세우기 안내로 견인 예방'] },
 };
-const moments = ['출퇴근 시간\n보도가 기기로 막힐 때', '같은 자리에서\n견인이 반복될 때', '주차구역은 있지만\n붐비는 시간이 있을 때', '닫힌 자리에\n기기가 남아 있을 때'];
+const moments = ['출퇴근 시간\n역 앞 보도가 붐빌 때', '같은 주소에서\n견인이 반복될 때', '한산한 시간에도\n반납을 막아 불편할 때', '횡단보도·점자블록을\n기기가 막을 때'];
 const process = [
-  ['후보지 선정', '견인이 잦은 지점 주변의 제휴 가능한 공간 중, 기기를 세운 뒤 유효폭이 2.0m 이상 남는 곳'],
-  ['보행량 판정', '15분 보행량과 남는 유효폭으로 보행류율을 계산해 보행 서비스 수준(LOS) 판정'],
-  ['상태·수용량 조절', 'LOS A~C 개방, D 수용 대수 축소, E~F 폐쇄. 닫기 전에는 수용량을 단계적으로 낮춤'],
-  ['남은 기기 이동', '닫히는 존의 기기를 시민이 걸어서 끌고 가까운 열린 존으로. 운영사 연동 후 제공'],
+  ['페널티 구역 확인', '운영사 앱의 페널티 구역 중 견인 다발 지점 주변. 서울시 지정 PM 주차구역은 그대로 둠'],
+  ['시간대별 판정', '가장 가까운 역의 그 시간 승하차가 그 역 평균+1표준편차 이상이면 페널티 유지, 평균 이상이면 일부 개방, 평균 미만이면 주차존 개방'],
+  ['반납 위치 확인', '견인 위험 구역이 아니면 사진 없이 바로 반납'],
+  ['위험 구역만 사진', '차도 위 · 보도 중앙 · 횡단보도 · 점자블록을 막는지 보고 정상 반납 또는 다시 세우기 요청 (AI는 개발 예정)'],
 ];
 const facts = [
-  ['2.0m', '남는 보도 유효폭', '기기를 세운 뒤에도 남아야 하는 폭 (사업계획 설계 기준)'],
-  ['15분', '보행량 집계 단위', '15분 보행량 ÷ 15 ÷ 유효폭 = 보행류율(명/분/m)'],
-  ['3단계', '운영 상태', '개방 · 축소 · 폐쇄. 자료가 부족하면 판정 불가로 두고 열지 않음'],
-  ['5종', '연결한 공공데이터', '견인 이력, S-DoT 유동인구, 공식 PM 주차구역, TAGO PM 위치, SGIS 주소 좌표'],
+  ['13,303건', '사진으로 가려낼 수 있는 견인', '2025 강남구 견인 13,308건 중 차도·횡단보도·정류소·지하철역·점자블록 등 (오신고 3건 제외)'],
+  ['2건', '위치로 판정하는 견인', '보호구역은 사진으로 알 수 없어 지오펜스로'],
+  ['평균+1σ', '각 역 자신의 하루 분포', '역삼역 시간당 7,765명↑ 유지 · 4,525명↑ 일부 개방'],
+  ['16시간', '역삼역 앞 하루 개방', '페널티 유지는 첨두 08·09·17·18시 4시간'],
 ];
 const faqs = [
-  ['지금 실제로 운영 중인가요?', '관악구 신림역~서울대입구역 일대를 시범 지역으로 준비하고 있습니다. 운영사 잠금 해제·포인트·사진 확인은 아직 연동 전입니다.'],
-  ['보행량은 어떻게 측정하나요?', '현장에서 센 15분 보행량을 판정에 씁니다. S-DoT 10분 관측과 지하철 승하차는 참고 지표로만 봅니다.'],
-  ['판정 자료가 부족하면 어떻게 되나요?', '판정 불가로 표시하고 자동으로 열지 않습니다. LOS 기준은 2022 보행업무편람 수록값을 참고 기준으로 씁니다.'],
-  ['이동 미션 보상은 얼마인가요?', '보상 정책과 지급 수단은 아직 정해지지 않았습니다. 이동은 기기를 타지 않고 걸어서 끌고 가는 방식만 허용합니다.'],
-  ['내 위치 정보는 어디로 가나요?', '브라우저에서만 쓰며 GPS 좌표를 서버로 보내지 않습니다. 주변 지도 타일 요청은 OpenStreetMap에 전달됩니다.'],
+  ['기존 주차구역도 바뀌나요?', '아니요. 서울시 지정 PM 주차구역과 운영사의 주차가능구역은 그대로 두고, 페널티 구역만 시간마다 바꿉니다.'],
+  ['보행량은 어떻게 판단하나요?', '15분 보행량 공개 자료가 없어, 역 300m 안 구역은 가장 가까운 역의 시간대별 승하차(2026년 10월 일평균)를 대리지표로 씁니다. 실증 때 현장 15분 계수로 검증합니다.'],
+  ['견인이 출퇴근에 몰리나요?', '견인 데이터에는 시각이 없어 그렇게 말하지 않습니다. 장소는 견인 데이터로, 시간은 승하차 데이터로만 판단합니다.'],
+  ['사진은 언제 찍나요?', '견인 위험 구역에 반납할 때만 한 장입니다. 얼굴·번호판은 자동으로 가리고 판독 후 삭제하는 것이 원칙이며, 지금 시연은 사진을 서버로 보내지 않는 모의 동작입니다.'],
+  ['지금 실제로 운영 중인가요?', '강남구 2호선 역삼역 · 9호선 삼성중앙역 일대를 시범 지역으로 준비 중입니다. 기존 지정 PM 주차구역 58곳은 그대로 둡니다. 운영사 앱 연동과 사진 AI는 아직 연동 전입니다.'],
 ];
 
 // Fades a block in the first time it scrolls into view, like the reference page.
@@ -111,15 +111,15 @@ export default function LandingPage() {
       <HeroScene svgRef={svgRef} />
       <HStack padding={6} hAlign="between" vAlign="center" style={{ position: 'relative' }}><Link href="/" type="large" weight="bold">PM 주차존</Link><Link href="/mobile" weight="semibold">모바일 웹</Link></HStack>
       <VStack gap={6} hAlign="center" vAlign="center" padding={6} style={{ flex: 1, position: 'relative' }}>
-        <Heading level={1} id="hero-title" type="display-2" justify="center" textWrap="balance">사람이 붐비면 비우고,<br />한산하면 <Text as="span" type="inherit" color="accent">주차존</Text>으로.</Heading>
-        <Text type="large" color="secondary" justify="center" textWrap="balance">보행량에 맞춰 킥보드·전기자전거 주차존을 열고 닫습니다.</Text>
+        <Heading level={1} id="hero-title" type="display-2" justify="center" textWrap="balance">한산할 땐 열고,<br />위험한 자리만 <Text as="span" type="inherit" color="accent">사진으로</Text>.</Heading>
+        <Text type="large" color="secondary" justify="center" textWrap="balance">운영사 앱의 페널티 구역을 견인·혼잡 데이터로 시간마다 바꿉니다.</Text>
         <HStack gap={3} wrap="wrap" hAlign="center"><Link href="/service" type="large" style={cta}>서비스 시작</Link><Link href="#details" type="large" style={ghost}>상세 설명</Link></HStack>
       </VStack>
       <HStack padding={6} hAlign="end" style={{ position: 'relative' }}><Button label={playing ? '배경 영상 일시정지' : '배경 영상 재생'} size="sm" variant="secondary" aria-pressed={!playing} onClick={() => setPlaying((value) => !value)} /></HStack>
     </VStack>
 
     <VStack as="section" id="details" aria-labelledby="overview-title" gap={10} padding={8} hAlign="center" vAlign="center" style={band('light')}>
-      <Title id="overview-title" kicker="서비스 개요" before="PM 주차존은 " accent="시간제 동적 주차" after={<>로<br />보행과 주차를 함께 해결합니다.</>} />
+      <Title id="overview-title" kicker="서비스 개요" before="바꾸는 것은 " accent="페널티 구역의 시간" after={<>입니다.<br />기존 주차가능구역은 그대로 둡니다.</>} />
       <Reveal gap={8} hAlign="center" delay={0.1} style={inner}>
         <HStack gap={2} hAlign="center" wrap="wrap">{Object.entries(audiences).map(([id, item]) => <Button key={id} label={item.label} variant={audience === id ? 'primary' : 'secondary'} aria-pressed={audience === id} onClick={() => setAudience(id)} />)}</HStack>
         <VStack gap={6} padding={8} hAlign="center" style={{ ...card, width: '100%', background: 'var(--color-background-body)' }} aria-live="polite">
@@ -131,21 +131,21 @@ export default function LandingPage() {
     </VStack>
 
     <VStack as="section" aria-labelledby="moments-title" gap={10} padding={8} hAlign="center" vAlign="center" style={band('dark')}>
-      <Title id="moments-title" before="이런 순간, " accent="PM 주차존" after="이 필요해요" sub="보도는 사람이 먼저 걸어야 하는 공간입니다." />
+      <Title id="moments-title" before="이런 순간, " accent="PM 주차존" after="이 필요해요" sub="강남구는 2025년 킥보드 견인 13,308건으로 서울 1위(21%)입니다." />
       <Grid columns={{ minWidth: 220, max: 4 }} gap={4} width="100%" maxWidth="64rem">
         {moments.map((moment, index) => <Reveal key={moment} delay={index * 0.1} padding={6} vAlign="end" style={{ ...darkCard, minHeight: '14rem' }}><Text type="display-3" style={{ color: 'var(--color-background-muted)' }}>{String(index + 1).padStart(2, '0')}</Text><Text type="large" weight="bold" color="inherit" style={{ whiteSpace: 'pre-line' }}>{moment}</Text></Reveal>)}
       </Grid>
     </VStack>
 
     <VStack as="section" aria-labelledby="process-title" gap={10} padding={8} hAlign="center" vAlign="center" style={band('light')}>
-      <Title id="process-title" kicker="HOW IT WORKS" before="보행량을 보고 " accent="주차존을 조절" after="합니다" sub="후보지 선정부터 남은 기기 이동까지 네 단계로 운영합니다." />
+      <Title id="process-title" kicker="HOW IT WORKS" before="장소는 견인, " accent="시간은 승하차" after="로 판정합니다" sub="페널티 구역 판정과 위험 구역 사진 확인, 네 단계입니다." />
       <Grid columns={{ minWidth: 220, max: 2 }} gap={4} width="100%" maxWidth="56rem">
         {process.map(([title, text], index) => <Reveal key={title} delay={index * 0.1} gap={3} padding={6} hAlign="center" style={{ ...card, background: 'var(--color-background-body)' }}><Text type="label" color="accent">STEP {index + 1}</Text><Heading level={3} justify="center">{title}</Heading><Text color="secondary" justify="center">{text}</Text></Reveal>)}
       </Grid>
     </VStack>
 
     <VStack as="section" aria-labelledby="tech-title" gap={10} padding={8} hAlign="center" vAlign="center" style={band('dark')}>
-      <Title id="tech-title" kicker="기술" before="같은 입력이면 " accent="같은 판정" after="이 나옵니다" sub="판정 계산은 화면·외부 API와 분리된 서버 엔진에서 처리합니다." />
+      <Title id="tech-title" kicker="데이터" before="공공데이터로 " accent="확인한 것" after="만 씁니다" sub="판정 계산은 화면과 분리된 서버 엔진에서 처리합니다." />
       <Grid columns={{ minWidth: 220, max: 4 }} gap={4} width="100%" maxWidth="64rem">
         {facts.map(([value, label, text], index) => <Reveal key={label} delay={index * 0.1} gap={2} padding={6} hAlign="center" style={card}><Text type="label" color="secondary">{label}</Text><Text type="display-2" color="accent">{value}</Text><Text type="supporting" justify="center">{text}</Text></Reveal>)}
       </Grid>
@@ -158,8 +158,8 @@ export default function LandingPage() {
         <Reveal gap={3} style={{ width: '100%', maxWidth: '48rem' }}>{faqs.map(([question, answer]) => <VStack key={question} padding={4} style={{ ...card, background: 'var(--color-background-body)' }}><Collapsible trigger={<Text type="label">Q. {question}</Text>} defaultIsOpen={false}><Text color="secondary">A. {answer}</Text></Collapsible></VStack>)}</Reveal>
       </VStack>
       <VStack gap={5} padding={10} hAlign="center" style={{ background: ink }}>
-        <Heading level={2} justify="center" style={{ color: 'var(--color-background-surface)' }}>보행을 먼저, 주차는 유연하게</Heading>
-        <Text type="large" justify="center" style={{ color: 'var(--color-background-body)' }}>지도에서 지금 이용할 수 있는 주차존을 확인하세요.</Text>
+        <Heading level={2} justify="center" style={{ color: 'var(--color-background-surface)' }}>한산할 땐 열고, 위험한 자리만 사진으로</Heading>
+        <Text type="large" justify="center" style={{ color: 'var(--color-background-body)' }}>지도에서 지금 페널티 구역이 열렸는지 확인하세요.</Text>
         <HStack gap={3} wrap="wrap" hAlign="center"><Link href="/service" type="large" style={cta}>서비스 시작</Link><Link href="/mobile" type="large" style={{ ...pill, border: 'var(--border-width) solid var(--color-background-surface)', color: 'var(--color-background-surface)' }}>모바일 웹</Link></HStack>
       </VStack>
     </VStack>
