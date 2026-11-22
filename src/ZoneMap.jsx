@@ -11,7 +11,7 @@ const names = { open: '주차존 개방', reduced: '일부 개방', closed: '페
 // Web demo area: 강남구 (user request 2026-11-22).
 const pilotCenter = [37.5045, 127.0400];
 
-export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [], designated = [], selectedVehicleId = null, onVehicleSelect, towingAreas, selectedId, onSelect, onBoundsChange, focus, position, bottomFraction = 0, topInset = 0, fitMaxZoom = 17 }) {
+export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [], designated = [], selectedVehicleId = null, onVehicleSelect, towingAreas, selectedId, onSelect, onBoundsChange, focus, position, bottomFraction = 0, topInset = 0, fitMaxZoom = 17, quietTiles = false }) {
   const element = useRef(null); const map = useRef(null); const layer = useRef(null);
   const towingLayer = useRef(null);
   const [tileError, setTileError] = useState(false);
@@ -22,6 +22,8 @@ export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [],
     L.control.zoom({ position: 'topright', zoomInTitle: '지도 확대', zoomOutTitle: '지도 축소' }).addTo(instance);
     const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19 }).addTo(instance);
     tiles.on('tileerror', () => setTileError(true)); tiles.on('tileload', () => setTileError(false));
+    // Quiet grey base map (the landing scene's look) so red cells and blue scooters stand out.
+    if (quietTiles) tiles.getContainer().style.filter = 'grayscale(1) brightness(1.06) contrast(.9)';
     layer.current = L.layerGroup().addTo(instance);
     towingLayer.current = L.layerGroup().addTo(instance);
     const report = () => { const bounds = instance.getBounds(); onBoundsChange([bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast()]); };

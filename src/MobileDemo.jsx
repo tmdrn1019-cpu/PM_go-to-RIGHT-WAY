@@ -134,6 +134,7 @@ export default function MobileDemo() {
   useEffect(() => { if (firstSpot && me.label === SPOTS[0].label) setMe({ ...returnSpots[0], accuracy: 0 }); }, [firstSpot]); // eslint-disable-line react-hooks/exhaustive-deps
   const pickSpot = (spot) => { setMe({ ...spot, accuracy: 0 }); setReturned(null); takeShot(null); setMessage(''); };
   const statusText = { open: '주차존 개방', reduced: '일부 개방', closed: '페널티 유지', unknown: '확인 중' };
+  const statusColor = { open: 'var(--color-text-success)', reduced: 'var(--color-text-warning)', closed: 'var(--color-text-error)', unknown: 'var(--color-text-secondary)' };
   // One dropdown for where I am: my GPS, or a demo spot.
   const spotPicker = (spots, onPick) => <Selector label="위치" width="100%" value={me.label} isDisabled={locating || locked}
     options={[{ value: '내 위치', label: locating ? '내 위치 확인 중…' : '내 위치' }, ...spots.map((s) => s.label)]}
@@ -246,7 +247,18 @@ export default function MobileDemo() {
     <VStack height="100%" gap={0} style={{ minHeight: 0 }}>
       <VStack style={{ height: '45%', minHeight: 0, position: 'relative', flexShrink: 0 }}>
         {active && !no3d ? <Suspense fallback={<Text role="status">3D 지도를 불러오고 있어요.</Text>}><WalkMap3D route={active.route} point={missionPoint} clearM={active.clearM} startLabel={`견인 위치 · ${active.reason ?? '견인 구역'}`} targetLabel={protectedMove ? active.destinationName : '옮길 목표 지점 (원 밖 아무 곳)'} scooterLabel={`${active.scooterId} · 끌고 이동 중 (시연·모의 위치)`} onFail={on3dFail} /></Suspense>
-        : <ZoneMap zones={active ? [] : crowd?.zones ?? []} designated={active ? [] : state?.designated ?? []} vehicles={mode === 'return' ? [] : missionVehicles} selectedVehicleId={active ? active.scooterId : picked} onVehicleSelect={onVehicleSelect} areas={mode === 'return' ? [] : areas} routes={active ? [active.route] : []} selectedId={null} onSelect={noop} onBoundsChange={noop} focus={focus} position={position} fitMaxZoom={active ? 19 : 17} />}
+        : <ZoneMap zones={active ? [] : crowd?.zones ?? []} designated={active ? [] : state?.designated ?? []} vehicles={mode === 'return' ? [] : missionVehicles} selectedVehicleId={active ? active.scooterId : picked} onVehicleSelect={onVehicleSelect} areas={mode === 'return' ? [] : areas} routes={active ? [active.route] : []} selectedId={null} onSelect={noop} onBoundsChange={noop} focus={focus} position={position} fitMaxZoom={active ? 19 : 17} quietTiles />}
+        {/* Map overlays (do not block dragging): where I stand and what the colours mean. */}
+        {!active && mode === 'return' && crowd && !crowd.failed && <VStack style={{ position: 'absolute', top: 'var(--spacing-3)', left: 'var(--spacing-3)', zIndex: 2, pointerEvents: 'none' }}>
+          <Card padding={3} elevation="med"><HStack gap={3} vAlign="center">
+            <Text type="label" color="secondary">{zoneHere ? `${zoneHere.basis.station.name}역` : '내 위치'}</Text>
+            <Text type="large" weight="bold">{time(crowd.at)}</Text>
+            <Text type="label" style={{ color: zoneHere ? statusColor[zoneHere.status] : 'var(--color-text-secondary)' }}>{zoneHere ? statusText[zoneHere.status] : '견인 위험 구역 밖'}</Text>
+          </HStack></Card>
+        </VStack>}
+        {!active && <VStack style={{ position: 'absolute', bottom: 'var(--spacing-3)', left: 'var(--spacing-3)', zIndex: 2, pointerEvents: 'none' }}>
+          <Card padding={2} elevation="low"><Text type="supporting">{mode === 'return' ? <><Text as="span" type="inherit" style={{ color: 'var(--color-text-error)' }}>■ 빨간 칸</Text> 견인 위험 구역 · 진할수록 페널티 유지</> : <><Text as="span" type="inherit" style={{ color: 'var(--color-text-error)' }}>● 빨간 원</Text> 견인 다발 지점 · 핀 = 시연 킥보드</>}</Text></Card>
+        </VStack>}
       </VStack>
       <VStack padding={4} gap={4} isScrollable style={{ flex: 1, minHeight: 0 }} aria-label={mode === 'return' ? '반납 패널' : '미션 패널'}>
         {!active && <SegmentedControl label="기능" layout="fill" value={mode} onChange={(value) => {
