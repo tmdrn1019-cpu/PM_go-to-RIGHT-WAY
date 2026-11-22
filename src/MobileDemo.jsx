@@ -160,7 +160,7 @@ export default function MobileDemo() {
         <Text type="label">{statusText[zoneHere.status]} · {zoneHere.name}</Text>
         <Text>{zoneHere.reason}</Text>
       </Box>
-      <Box>
+      <Box tone="red">
         <Text type="label">견인 위험 구역 · 2025년 {zoneHere.towingCount}건</Text>
         <Text>세워 둔 모습을 한 장 찍어 주세요. 차도·보도 중앙·횡단보도·점자블록을 막는지 봅니다.</Text>
       </Box>
