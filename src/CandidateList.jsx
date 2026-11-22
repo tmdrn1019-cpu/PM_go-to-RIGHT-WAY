@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { VStack } from '@astryxdesign/core/Layout';
+import { VStack, HStack } from '@astryxdesign/core/Layout';
 import { Heading, Text } from '@astryxdesign/core/Text';
 import { Button } from '@astryxdesign/core/Button';
+import { Card } from '@astryxdesign/core/Card';
+import { Box } from './panel-ui';
 import { fetchExternalData } from './service-client.mjs';
 
 const time = (value) => new Date(value).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
@@ -19,17 +21,15 @@ export default function CandidateList({ onTowing }) {
     read(); const timer = setInterval(read, 60000); document.addEventListener('visibilitychange', read);
     return () => { controller.abort(); clearInterval(timer); document.removeEventListener('visibilitychange', read); };
   }, []);
-  if (failed) return <Text>후보 탐색지 자료를 확인할 수 없습니다.</Text>;
-  if (!data) return <Text type="supporting">후보 탐색지 계산 중</Text>;
+  if (failed) return <Box tone="orange"><Text>후보 탐색지 자료를 확인할 수 없어요.</Text></Box>;
+  if (!data) return <Box><Text type="supporting">후보 탐색지 계산 중</Text></Box>;
   return <VStack gap={2}>
     <Heading level={3}>주차존 후보 탐색지 {data.candidates.length}곳</Heading>
-    <Text type="supporting">견인 다발 주소 반경 {data.radiusM}m를 묶은 탐색 영역입니다. 제휴 공간·보도 유효폭·15분 보행량을 확인하기 전에는 판정 불가이며 개방하지 않습니다.</Text>
-    {!!data.unmappedTowingCount && <Text type="supporting">좌표를 확인하지 못한 주소의 견인 {data.unmappedTowingCount}건은 후보 합계에서 빠졌습니다.</Text>}
-    {data.candidates.map((c, i) => <VStack key={c.id} gap={1} paddingBlock={2} style={{ borderBottom: 'var(--border-width) solid var(--color-border)' }}>
-      <Text type="label">{i + 1}. {c.address} 주변</Text>
+    <Box><Text type="supporting">견인 다발 주소 반경 {data.radiusM}m 탐색 영역이에요. 제휴 공간·보도 유효폭·15분 보행량을 확인하기 전에는 판정 불가라 열지 않아요.{data.unmappedTowingCount ? ` 좌표 미확인 견인 ${data.unmappedTowingCount}건은 합계에서 빠졌어요.` : ''}</Text></Box>
+    {data.candidates.map((c, i) => <Card key={c.id} variant="muted" padding={3}><HStack hAlign="between" vAlign="center" gap={2}><VStack gap={1} style={{ minWidth: 0 }}>
+      <Text type="label">{i + 1}. {c.address.replace(/^서울특별시 /, '')} 주변</Text>
       <Text>견인 {c.towingCount.toLocaleString('ko-KR')}건 · 주소 {c.addressCount}곳 · 판정 불가</Text>
       <Text type="supporting">{link(c.pedestrian)}</Text>
-      <Button label={`${c.address} 주변 지도에서 보기`} size="sm" variant="secondary" onClick={() => onTowing([{ ...c, count: c.towingCount, firstDate: data.from, lastDate: data.to }], true)} />
-    </VStack>)}
+    </VStack><Button label="지도에서 보기" size="sm" variant="primary" onClick={() => onTowing([{ ...c, count: c.towingCount, firstDate: data.from, lastDate: data.to }], true)} /></HStack></Card>)}
   </VStack>;
 }
