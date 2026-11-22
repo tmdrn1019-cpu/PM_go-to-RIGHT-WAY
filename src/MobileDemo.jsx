@@ -12,6 +12,7 @@ import { Card } from '@astryxdesign/core/Card';
 import { Selector } from '@astryxdesign/core/Selector';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import ZoneMap from './ZoneMap';
+import { Box, Act, statusTone } from './panel-ui';
 // MapLibre is large; load it only when a mission starts.
 const WalkMap3D = lazy(() => import('./WalkMap3D'));
 import { distanceM, walkSteps } from '../server/engine.mjs';
@@ -25,9 +26,6 @@ const STEPS = ['킥보드 선택', '끌고 이동', '사진 확인'];
 const WALK_STEPS = 4; const GLIDE_MS = 1200;
 const moveText = (exit) => exit.designated ? `${exit.name}까지 ${exit.distanceM}m` : `${exit.distanceM}m만`;
 const time = (value) => new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value));
-// Prose sits in tinted cards; full-width filled shapes are only ever tappable actions.
-const Box = ({ tone = 'muted', children }) => <Card variant={tone} padding={4}><VStack gap={2}>{children}</VStack></Card>;
-const Act = (props) => <Button size="lg" width="100%" variant="primary" {...props} />;
 
 export default function MobileDemo() {
   const [state, setState] = useState(null); const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false);
@@ -136,7 +134,6 @@ export default function MobileDemo() {
   useEffect(() => { if (firstSpot && me.label === SPOTS[0].label) setMe({ ...returnSpots[0], accuracy: 0 }); }, [firstSpot]); // eslint-disable-line react-hooks/exhaustive-deps
   const pickSpot = (spot) => { setMe({ ...spot, accuracy: 0 }); setReturned(null); takeShot(null); setMessage(''); };
   const statusText = { open: '주차존 개방', reduced: '일부 개방', closed: '페널티 유지', unknown: '확인 중' };
-  const statusTone = { open: 'green', reduced: 'orange', closed: 'red' };
   // One dropdown for where I am: my GPS, or a demo spot.
   const spotPicker = (spots, onPick) => <Selector label="위치" width="100%" value={me.label} isDisabled={locating || locked}
     options={[{ value: '내 위치', label: locating ? '내 위치 확인 중…' : '내 위치' }, ...spots.map((s) => s.label)]}
