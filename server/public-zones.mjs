@@ -1,5 +1,5 @@
 import { readFileSync, statSync } from 'node:fs';
-import { evaluateZone, evaluateRelative, distanceM, LOS_REFERENCE, RELATIVE_POLICY, shareCutoff } from './engine.mjs';
+import { evaluateZone, evaluateRelative, evaluatePenalty, distanceM, LOS_REFERENCE, RELATIVE_POLICY, shareCutoff } from './engine.mjs';
 
 // User decision (2026-11-21): zones are map areas like an operator app's return zones: OSM land-use polygons
 // (residential, commercial, retail blocks) are open by default and close or shrink when crowded. Crowding is checked two
@@ -49,11 +49,12 @@ export function stationProfiles(master, rides, days) {
   });
 }
 
-// Seoul-wide cut-offs over every station-hour with service (zero-ridership night hours excluded).
+// Seoul-wide cut-offs over every station-hour with service (zero-ridership night hours excluded); the median is the penalty
+// zones' floor for a partial opening.
 export function cityThresholds(stations, policy = RELATIVE_POLICY) {
   const hours = stations.flatMap((s) => s.hourly).filter((v) => v > 0).sort((a, b) => b - a);
   check(hours.length >= 24, '서울 기준선을 만들 역별 시간대 자료가 부족합니다.');
-  return { ...policy, close: shareCutoff(hours, policy.closeShare), reduce: shareCutoff(hours, policy.reduceShare), stationHours: hours.length, stations: stations.length };
+  return { ...policy, close: shareCutoff(hours, policy.closeShare), reduce: shareCutoff(hours, policy.reduceShare), median: hours[Math.floor(hours.length / 2)], stationHours: hours.length, stations: stations.length };
 }
 
 // Area (m²) and centroid of a closed ring, on a local metre grid.
@@ -206,7 +207,7 @@ export function readPublicZones(file = process.env.PUBLIC_ZONES_FILE || 'data/pu
     const value = parsePublicZones(file, stat);
     cached = { key, value };
     return value;
-  } catch (error) { return { status: error.code === 'ENOENT' ? 'unconfigured' : 'error', zones: [], designated: [], towingHotspots: [] }; }
+  } catch (error) { return { status: error.code === 'ENOENT' ? 'unconfigured' : 'error', zones: [], penaltyZones: [], designated: [], towingHotspots: [] }; }
 }
 function parsePublicZones(file, stat) {
   try {
@@ -216,8 +217,11 @@ function parsePublicZones(file, stat) {
     for (const z of data.zones) check(typeof z.id === 'string' && validPoint(z.point) && Array.isArray(z.boundary) && z.boundary.length >= 4 && z.boundary.every(validPoint) && Array.isArray(z.layouts) && z.layouts.length && z.thresholds && z.basis, 'zone');
     for (const d of data.designated) check(typeof d.id === 'string' && typeof d.name === 'string' && validPoint(d.point), 'designated');
     for (const h of data.towingHotspots) check(typeof h.address === 'string' && Number.isFinite(h.count) && h.count > 0 && validPoint(h.point), 'hotspot');
-    return { status: 'ready', builtAt: data.builtAt, month: data.month ?? null, period: data.period, zones: data.zones, designated: data.designated, towingHotspots: data.towingHotspots };
-  } catch (error) { return { status: error.code === 'ENOENT' ? 'unconfigured' : 'error', zones: [], designated: [], towingHotspots: [] }; }
+    const penaltyZones = data.penaltyZones ?? [];
+    check(Array.isArray(penaltyZones) && penaltyZones.length <= 2000, 'penalty');
+    for (const z of penaltyZones) check(typeof z.id === 'string' && validPoint(z.point) && Array.isArray(z.boundary) && z.boundary.length >= 4 && z.boundary.every(validPoint) && Array.isArray(z.station?.hourly) && z.station.hourly.length === 24 && z.thresholds, 'penalty zone');
+    return { status: 'ready', builtAt: data.builtAt, month: data.month ?? null, period: data.period, zones: data.zones, penaltyZones, designated: data.designated, towingHotspots: data.towingHotspots };
+  } catch (error) { return { status: error.code === 'ENOENT' ? 'unconfigured' : 'error', zones: [], penaltyZones: [], designated: [], towingHotspots: [] }; }
 }
 
 // Verdicts at a moment; parked/available stay unknown until an operator shares inventory.
@@ -230,4 +234,53 @@ export function publicZonesAt(zones, at) {
       parked: null, available: null, nextChange: null, observedAt: new Date(at).toISOString(),
       observationSource: [station && `${RIDERSHIP_SOURCE.name} ${station.month}`, walk && SIDEWALK_SOURCE.name, `구역 모양 ${OSM_SOURCE.name}`].filter(Boolean).join(' · ') };
   });
+}
+
+// Pivot (2026-11-22): penalty zones are the operator app's no-return areas around towing hotspots, drawn as square grid cells
+// like a rental app's map (user request): every cellM cell touched by a radiusM circle around a towing address within
+// stationRadiusM of a station. Cells shared by several addresses merge. Radii, cell size and the district limit are
+// assumptions (the demo area is 강남구 by user request); a cell is not a legal no-parking boundary. The same cell is the
+// "towing risk area" where a return needs a photo.
+export const PENALTY_RULES = { stationRadiusM: 300, radiusM: SYNTHETIC_RULES.riskRadiusM, cellM: 50, districts: ['강남구'] };
+const shortAddress = (address) => String(address).replace(/^서울특별시\s+\S+구\s+/, '');
+export function buildPenaltyZones({ hotspots, stations, month, rules = PENALTY_RULES }) {
+  check(stations.length, '지하철역 자료가 필요합니다.');
+  const thresholds = cityThresholds(stations);
+  const cells = new Map();
+  for (const h of hotspots) {
+    if (!validPoint(h.point) || !rules.districts.includes(h.district)) continue;
+    const station = nearest(h.point, stations, rules.stationRadiusM);
+    if (!station) continue;
+    const [x, y] = gridXY(h.point); const r = rules.radiusM; const c = rules.cellM;
+    for (let cx = Math.floor((x - r) / c); cx <= Math.floor((x + r) / c); cx++) {
+      for (let cy = Math.floor((y - r) / c); cy <= Math.floor((y + r) / c); cy++) {
+        // Nearest point of the cell to the address: the circle touches the cell when it is within r.
+        const dx = Math.max(cx * c - x, 0, x - (cx + 1) * c); const dy = Math.max(cy * c - y, 0, y - (cy + 1) * c);
+        if (Math.hypot(dx, dy) > r) continue;
+        const key = `${cx}_${cy}`; const cell = cells.get(key) ?? { key, cx, cy, hotspots: [], station };
+        cell.hotspots.push(h); if (station.distanceM < cell.station.distanceM) cell.station = station;
+        cells.set(key, cell);
+      }
+    }
+  }
+  return [...cells.values()].map(({ key, cx, cy, hotspots: hs, station }) => {
+    const c = rules.cellM; const [south, west] = gridLL([cx * c, cy * c]); const [north, east] = gridLL([(cx + 1) * c, (cy + 1) * c]);
+    const top = [...hs].sort((a, b) => b.count - a.count)[0];
+    return { id: `penalty-${key}`, kind: 'penalty', name: `${shortAddress(top.address)} 주변 칸`, address: top.address, district: top.district,
+      towingCount: hs.reduce((sum, h) => sum + h.count, 0), towingAddresses: hs.map((h) => ({ address: h.address, count: h.count })),
+      point: [Math.round((south + north) / 2 * 1e6) / 1e6, Math.round((west + east) / 2 * 1e6) / 1e6], bounds: [south, west, north, east],
+      boundary: [[south, west], [north, west], [north, east], [south, east], [south, west]], cellM: c, thresholds,
+      station: { name: station.name, distanceM: Math.round(station.distanceM), hourly: station.hourly, month } };
+  }).sort((a, b) => b.towingCount - a.towingCount || a.id.localeCompare(b.id)).map((z, _i, all) => {
+    // Cells around one address share its name, so number them for the list.
+    const same = all.filter((o) => o.name === z.name);
+    return same.length > 1 ? { ...z, name: `${z.name} ${same.indexOf(z) + 1}/${same.length}` } : z;
+  });
+}
+export const inCell = ([lat, lng], [south, west, north, east]) => lat >= south && lat <= north && lng >= west && lng <= east;
+export function penaltyZonesAt(zones, at) {
+  const hour = new Date(new Date(at).getTime() + KST).getUTCHours();
+  return zones.map(({ station, ...zone }) => ({ ...zone, ...evaluatePenalty({ hourly: station.hourly, thresholds: zone.thresholds }, at), vehicleTypes: ['scooter'],
+    crowdLabel: `${station.name}역(${station.distanceM}m) ${hour}시 승하차(일평균)`, basis: { station: { name: station.name, distanceM: station.distanceM, month: station.month } },
+    observedAt: new Date(at).toISOString(), observationSource: `${RIDERSHIP_SOURCE.name} ${station.month} · 서울시 전동킥보드 견인 현황 2025` }));
 }

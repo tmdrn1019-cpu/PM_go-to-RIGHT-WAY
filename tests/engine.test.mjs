@@ -113,3 +113,24 @@ test('혼잡 규칙은 서울 역·시간 기준선과 비교하고, 숫자를 �
   assert.equal(evaluateRelative({ ...zone, thresholds: undefined }, at(23)).status, 'unknown');
   assert.equal(evaluateRelative({ ...zone, thresholds: { ...thresholds, close: 100 } }, at(23)).status, 'unknown'); // close below reduce
 });
+
+test('페널티 구역은 그 역 평균+1표준편차 이상이면 유지, 평균 이상이면 일부 개방, 평균 또는 서울 중앙값 미만이면 개방', async () => {
+  const { evaluatePenalty, penaltyCutoffs } = await import('../server/engine.mjs');
+  // 역삼역 2026.10 일평균: service hours 05~24시 give mean 4,525 and mean+σ 7,765 (deck v8 slide 9).
+  const hourly = [198, 2, 0, 0, 1, 341, 1737, 5372, 11732, 10208, 4604, 3200, 3196, 3593, 3536, 3849, 4759, 8846, 10237, 5704, 3338, 2955, 2206, 896];
+  assert.deepEqual(penaltyCutoffs(hourly), { mean: 4525, keep: 7765 });
+  const thresholds = { median: 833 };
+  const at = (h) => `2026-11-20T${String(h).padStart(2, '0')}:10:00+09:00`;
+  const day = Array.from({ length: 24 }, (_, h) => evaluatePenalty({ hourly, thresholds }, at(h)).status);
+  assert.deepEqual(day.map((s, h) => s === 'closed' && h).filter(Number.isInteger), [8, 9, 17, 18]);
+  assert.deepEqual(day.map((s, h) => s === 'reduced' && h).filter(Number.isInteger), [7, 10, 16, 19]);
+  assert.equal(day.filter((s) => s === 'open').length, 16);
+  // The Seoul median is a floor for a partial opening.
+  assert.equal(evaluatePenalty({ hourly, thresholds: { median: 5400 } }, at(7)).status, 'open');
+  // 23:30 KST is still the same Seoul day's hour 23, not UTC's 14.
+  assert.equal(evaluatePenalty({ hourly, thresholds }, '2026-11-20T14:30:00Z').crowdCount, 896);
+  assert.equal(evaluatePenalty({ hourly: [], thresholds }, at(8)).status, 'unknown');
+  assert.equal(evaluatePenalty({ hourly: Array(24).fill(5), thresholds }, at(8)).status, 'unknown'); // σ 0
+  assert.equal(evaluatePenalty({ hourly, thresholds: {} }, at(8)).status, 'unknown');
+  assert.equal(evaluatePenalty({ hourly, thresholds }, 'nope').status, 'unknown');
+});

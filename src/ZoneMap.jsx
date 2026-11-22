@@ -7,8 +7,9 @@ import { Text } from '@astryxdesign/core/Text';
 import { visibleMapCenterY } from './zone-search.mjs';
 import { pmPin, parkingSign } from './pm-pin.mjs';
 
-const names = { open: '개방', reduced: '축소 운영', closed: '폐쇄', unknown: '확인 중' };
-const pilotCenter = [37.4827, 126.941];
+const names = { open: '주차존 개방', reduced: '일부 개방', closed: '페널티 유지', unknown: '확인 중' };
+// Web demo area: 강남구 (user request 2026-11-22).
+const pilotCenter = [37.5045, 127.0400];
 
 export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [], designated = [], selectedVehicleId = null, onVehicleSelect, towingAreas, selectedId, onSelect, onBoundsChange, focus, position, bottomFraction = 0, topInset = 0, fitMaxZoom = 17 }) {
   const element = useRef(null); const map = useRef(null); const layer = useRef(null);
@@ -55,9 +56,9 @@ export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [],
     for (const zone of zones) {
       const selected = zone.id === selectedId;
       const shape = L.polygon(zone.boundary, { renderer, color: palette[zone.status], weight: selected ? 4 : 1.5, dashArray: { closed: '2 4', reduced: '8 4' }[zone.status], fillOpacity: selected ? 0.45 : zone.status === 'closed' ? 0.35 : 0.2 }).addTo(layer.current);
-      const text = `${zone.name} · ${names[zone.status]} · ${zone.available === null ? `정원 ${zone.capacity}` : `여유 ${zone.available}`}대`;
+      const text = zone.kind === 'penalty' ? `${zone.name} · ${names[zone.status]} · 2025 견인 ${zone.towingCount}건` : `${zone.name} · ${names[zone.status]} · ${zone.available === null ? `정원 ${zone.capacity}` : `여유 ${zone.available}`}대`;
       const overlays = [shape];
-      if (selected || zone.kind !== 'area') overlays.push(sign(zone.point, { status: zone.status, picked: selected }, text, selected ? 900 : 200));
+      if (selected || !['area', 'penalty'].includes(zone.kind)) overlays.push(sign(zone.point, { status: zone.status, picked: selected }, text, selected ? 900 : 200));
       for (const overlay of overlays) {
         const label = document.createElement('strong'); label.textContent = text;
         overlay.bindTooltip(label); overlay.on('click', () => onSelect(zone.id));
