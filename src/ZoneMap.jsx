@@ -51,11 +51,16 @@ export default function ZoneMap({ zones, vehicles = [], areas = [], routes = [],
       sign(zone.point, { muted: true }, label.textContent, -200).bindTooltip(label);
     }
     // Area zones can number in the thousands: polygons go on one canvas, and only the selected zone gets a P sign.
-    // Closed and reduced areas also get dashed borders so status is not shown by colour alone.
+    // Penalty cells are towing-risk areas, so they are always red (user request): solid and dark while the penalty holds,
+    // long dashes when partly open, light with short dots when open. Line style tells status apart without colour.
     const renderer = L.canvas({ padding: 0.2 });
+    const risk = color('--color-error');
+    const cellStyle = { closed: { weight: 3, fillOpacity: 0.55 }, reduced: { weight: 3, dashArray: '10 5', fillOpacity: 0.38 }, open: { weight: 2.5, dashArray: '3 5', fillOpacity: 0.22 }, unknown: { weight: 2.5, dashArray: '3 5', fillOpacity: 0.22 } };
     for (const zone of zones) {
       const selected = zone.id === selectedId;
-      const shape = L.polygon(zone.boundary, { renderer, color: palette[zone.status], weight: selected ? 4 : 1.5, dashArray: { closed: '2 4', reduced: '8 4' }[zone.status], fillOpacity: selected ? 0.45 : zone.status === 'closed' ? 0.35 : 0.2 }).addTo(layer.current);
+      const style = zone.kind === 'penalty' ? { color: risk, ...cellStyle[zone.status] }
+        : { color: palette[zone.status], weight: 1.5, dashArray: { closed: '2 4', reduced: '8 4' }[zone.status], fillOpacity: zone.status === 'closed' ? 0.35 : 0.2 };
+      const shape = L.polygon(zone.boundary, { renderer, ...style, ...(selected && { weight: 5, fillOpacity: style.fillOpacity + 0.15 }) }).addTo(layer.current);
       const text = zone.kind === 'penalty' ? `${zone.name} · ${names[zone.status]} · 2025 견인 ${zone.towingCount}건` : `${zone.name} · ${names[zone.status]} · ${zone.available === null ? `정원 ${zone.capacity}` : `여유 ${zone.available}`}대`;
       const overlays = [shape];
       if (selected || !['area', 'penalty'].includes(zone.kind)) overlays.push(sign(zone.point, { status: zone.status, picked: selected }, text, selected ? 900 : 200));
