@@ -31,10 +31,7 @@ const smoothTimes = [0, ...PHASES.flatMap((_, i) => [(i + 1) / 5 - RAMP, (i + 1)
 const ease = { dur: DUR, repeatCount: 'indefinite', calcMode: 'spline', keyTimes: smoothTimes.join(';'), keySplines: Array(smoothTimes.length - 1).fill('0.4 0 0.2 1').join(';') };
 const glide = (values) => [values[0], ...values.flatMap((v, i) => [v, values[(i + 1) % values.length]])].join(';');
 const per = (pick) => glide(PHASES.map(([clock, status]) => pick(status, clock)));
-// Values that cannot be interpolated (dash patterns) switch at the slot edges.
-const step = { dur: DUR, repeatCount: 'indefinite', calcMode: 'discrete', keyTimes: '0;0.2;0.4;0.6;0.8;1' };
-const perStep = (pick) => [...PHASES.map(([, status]) => pick(status)), pick(PHASES[0][1])].join(';');
-const CELL = { closed: { fill: 0.58, width: 4, dash: 'none' }, reduced: { fill: 0.34, width: 3.5, dash: '14 8' }, open: { fill: 0.12, width: 3, dash: '4 8' } };
+const CELL = { closed: { color: red, fill: 0.58, width: 4, dash: 'none' }, reduced: { color: 'var(--color-warning)', fill: 0.42, width: 3.5, dash: '14 8' }, open: { color: 'var(--color-success)', fill: 0.3, width: 3, dash: '4 8' } };
 const STATUS_COLOR = { open: 'var(--color-text-success)', reduced: 'var(--color-text-warning)', closed: red };
 // How dark the street gets at each hour (dusk at 18, night at 22) and how many walkers are out.
 const NIGHT = { '08:00': 0, '10:00': 0, '14:00': 0, '18:00': 0.05, '22:00': 0.12 };
@@ -113,12 +110,12 @@ function HeroScene({ svgRef }) {
       <circle cx={x} cy="600" r="120" fill="url(#hero-lamp)" opacity="0"><animate attributeName="opacity" values={per((_, clock) => LIGHTS[clock])} {...ease} /></circle>
     </g>)}
     <Car y={812} dur="9s" begin="0s" /><Car y={874} dur="7s" begin="-3s" width={130} reverse /><Car y={812} dur="11s" begin="-6s" width={170} />
-    {/* Penalty cells: always red, darker and solid while the penalty holds. */}
-    {cells.map(([x, y]) => <rect key={`${x}-${y}`} x={x} y={y} width="60" height="50" rx="4" fill={red} stroke={red} fillOpacity={CELL.closed.fill}>
-      <animate attributeName="fill-opacity" values={per((s) => CELL[s].fill)} {...ease} />
-      <animate attributeName="stroke-width" values={per((s) => CELL[s].width)} {...ease} />
-      <animate attributeName="stroke-dasharray" values={perStep((s) => CELL[s].dash)} {...step} />
-    </rect>)}
+    {/* Penalty cells change colour with the verdict: red solid (유지), orange long dashes (일부 개방), green short dashes
+        (개방). One layer per state cross-fades, since theme colours cannot be interpolated directly. */}
+    {Object.entries(CELL).map(([status, c]) => <g key={status} opacity={status === PHASES[0][1] ? 1 : 0}>
+      <animate attributeName="opacity" values={per((s) => (s === status ? 1 : 0))} {...ease} />
+      {cells.map(([x, y]) => <rect key={`${x}-${y}`} x={x} y={y} width="60" height="50" rx="4" fill={c.color} fillOpacity={c.fill} stroke={c.color} strokeWidth={c.width} strokeDasharray={c.dash} />)}
+    </g>)}
     {/* A soft pulse around the area while the penalty holds. */}
     <rect x="596" y="642" width="408" height="120" rx="10" fill="none" stroke={red} strokeWidth="3" opacity="0">
       <animate attributeName="opacity" values={per((s) => (s === 'closed' ? 0.5 : 0))} {...ease} />
