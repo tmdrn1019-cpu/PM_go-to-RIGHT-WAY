@@ -21,58 +21,133 @@ const red = 'var(--color-error)';
 const band = (tone) => ({ ...screen, background: tone === 'light' ? 'var(--color-background-surface)' : 'var(--color-background-muted)' });
 
 // Hero time-lapse: 역삼역 앞 penalty cells through one day, using the engine's real verdicts for 역삼동 804
-// (08 유지 · 10 일부 개방 · 14 개방 · 18 유지 · 22 개방). Each phase holds for 3s of a 15s loop.
+// (08 유지 · 10 일부 개방 · 14 개방 · 18 유지 · 22 개방). Each hour holds for 3s of a 15s loop, then cross-fades.
 const PHASES = [['08:00', 'closed'], ['10:00', 'reduced'], ['14:00', 'open'], ['18:00', 'closed'], ['22:00', 'open']];
 const LABEL = { closed: '페널티 유지', reduced: '일부 개방', open: '주차존 개방' };
-const loop = { dur: '15s', repeatCount: 'indefinite', calcMode: 'discrete', keyTimes: '0;0.2;0.4;0.6;0.8;1' };
-// One value per phase (the sixth closes the loop and is never shown).
-const per = (pick) => [...PHASES.map(([, status]) => pick(status)), pick(PHASES[0][1])].join(';');
-const CELL = { closed: { fill: 0.55, dash: 'none', width: 5 }, reduced: { fill: 0.32, dash: '16 9', width: 4 }, open: { fill: 0.1, dash: '4 9', width: 3 } };
+const DUR = '15s';
+// Smooth loop: hold each phase, then ease into the next over the last 0.4s of its slot.
+const RAMP = 0.027;
+const smoothTimes = [0, ...PHASES.flatMap((_, i) => [(i + 1) / 5 - RAMP, (i + 1) / 5])].map((t) => +t.toFixed(3));
+const ease = { dur: DUR, repeatCount: 'indefinite', calcMode: 'spline', keyTimes: smoothTimes.join(';'), keySplines: Array(smoothTimes.length - 1).fill('0.4 0 0.2 1').join(';') };
+const glide = (values) => [values[0], ...values.flatMap((v, i) => [v, values[(i + 1) % values.length]])].join(';');
+const per = (pick) => glide(PHASES.map(([clock, status]) => pick(status, clock)));
+// Values that cannot be interpolated (dash patterns) switch at the slot edges.
+const step = { dur: DUR, repeatCount: 'indefinite', calcMode: 'discrete', keyTimes: '0;0.2;0.4;0.6;0.8;1' };
+const perStep = (pick) => [...PHASES.map(([, status]) => pick(status)), pick(PHASES[0][1])].join(';');
+const CELL = { closed: { fill: 0.58, width: 4, dash: 'none' }, reduced: { fill: 0.34, width: 3.5, dash: '14 8' }, open: { fill: 0.12, width: 3, dash: '4 8' } };
+const STATUS_COLOR = { open: 'var(--color-text-success)', reduced: 'var(--color-text-warning)', closed: red };
+// How dark the street gets at each hour (dusk at 18, night at 22) and how many walkers are out.
+const NIGHT = { '08:00': 0, '10:00': 0, '14:00': 0, '18:00': 0.05, '22:00': 0.12 };
+const LIGHTS = { '08:00': 0, '10:00': 0, '14:00': 0, '18:00': 0.5, '22:00': 1 };
 
-function Walker({ y, dur, begin, show }) {
-  return <g opacity="1">
-    {show && <animate attributeName="opacity" values={per(show)} {...loop} />}
-    <g stroke={ink} strokeWidth="5" strokeLinecap="round" fill="none" opacity=".35">
-      <animateTransform attributeName="transform" type="translate" from={`-60 ${y}`} to={`1660 ${y}`} dur={dur} begin={begin} repeatCount="indefinite" />
-      <circle cy="-30" r="10" fill={ink} /><path d="M0-18v28m0-20-12 12m12-12 12 12M0 10-9 34m9-24 9 24" />
+function Walker({ y, dur, begin, scale = 1, show, reverse }) {
+  const [from, to] = reverse ? [1660, -60] : [-60, 1660];
+  return <g>
+    {show && <animate attributeName="opacity" values={per(show)} {...ease} />}
+    <g fill={ink} opacity=".42">
+      <animateTransform attributeName="transform" type="translate" from={`${from} ${y}`} to={`${to} ${y}`} dur={dur} begin={begin} repeatCount="indefinite" />
+      <g transform={`scale(${reverse ? -scale : scale} ${scale})`}>
+        {/* Bob slightly with each step. */}
+        <animateTransform attributeName="transform" type="translate" values="0 0;0 -3;0 0" dur="0.6s" begin={begin} repeatCount="indefinite" additive="sum" />
+        <circle cy="-44" r="9" />
+        <path d="M-8-32h16l3 26h-22z" />
+        <path d="M-5-7L-11 22M5-7L13 22" stroke={ink} strokeWidth="6" strokeLinecap="round">
+          <animate attributeName="d" values="M-5-7L-11 22M5-7L13 22;M-5-7L-1 22M5-7L-3 22;M-5-7L-11 22M5-7L13 22" dur="0.6s" begin={begin} repeatCount="indefinite" />
+        </path>
+      </g>
     </g>
   </g>;
 }
 
+function Scooter({ x, y, show }) {
+  return <g transform={`translate(${x} ${y})`} opacity="0">
+    <animate attributeName="opacity" values={per(show)} {...ease} />
+    <animateTransform attributeName="transform" type="translate" values={per((s) => (show(s) ? `${x} ${y}` : `${x} ${y - 14}`))} {...ease} />
+    <g stroke="var(--color-accent)" strokeWidth="4" strokeLinecap="round" fill="none">
+      <path d="M2 26h30M28 26 22-6M16-6h12" />
+    </g>
+    <circle cx="4" cy="28" r="6" fill="var(--color-accent)" /><circle cx="32" cy="28" r="6" fill="var(--color-accent)" />
+  </g>;
+}
+
+function Car({ y, dur, begin, width = 150, reverse }) {
+  const [from, to] = reverse ? [1700, -200] : [-200, 1700];
+  return <g fill={ink} opacity=".16">
+    <animateTransform attributeName="transform" type="translate" from={`${from} ${y}`} to={`${to} ${y}`} dur={dur} begin={begin} repeatCount="indefinite" />
+    <rect x="0" y="-26" width={width} height="34" rx="12" />
+    <rect x={width * 0.2} y="-46" width={width * 0.55} height="26" rx="10" />
+    <circle cx={width * 0.2} cy="10" r="11" /><circle cx={width * 0.8} cy="10" r="11" />
+  </g>;
+}
+
 function HeroScene({ svgRef }) {
-  const cells = Array.from({ length: 12 }, (_, i) => [600 + (i % 6) * 66, 648 + Math.floor(i / 6) * 58]);
-  // Pedestrians: a few always, more when partly open, a crowd at the peaks.
-  const always = [[700, '21s', '0s'], [735, '24s', '-9s']];
-  const busy = [[690, '17s', '-4s'], [725, '19s', '-12s']];
-  const crowd = [[680, '15s', '-2s'], [715, '16s', '-8s'], [740, '14s', '-5s'], [700, '18s', '-13s'], [730, '13s', '-10s']];
+  const cells = Array.from({ length: 12 }, (_, i) => [604 + (i % 6) * 66, 650 + Math.floor(i / 6) * 56]);
+  const buildings = [[20, 250, 230], [270, 190, 300], [500, 280, 210], [1010, 220, 250], [1280, 170, 290], [1460, 260, 160]];
   return <svg ref={svgRef} viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-    {[0, 1, 2, 3, 4, 5].map((n) => <rect key={n} x={40 + n * 270} y={110 + (n % 2) * 50} width="210" height={300 - (n % 2) * 50} rx="10" fill={ink} opacity=".04" />)}
-    <rect y="630" width="1600" height="130" fill={ink} opacity=".06" />
-    <rect y="760" width="1600" height="140" fill={ink} opacity=".12" />
-    <path d="M0 830H1600" stroke="var(--color-background-surface)" strokeWidth="5" strokeDasharray="60 40" opacity=".7" />
+    <defs>
+      <radialGradient id="hero-lamp"><stop offset="0" stopColor="var(--color-warning)" stopOpacity=".5" /><stop offset="1" stopColor="var(--color-warning)" stopOpacity="0" /></radialGradient>
+      <linearGradient id="hero-fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={ink} stopOpacity="0" /><stop offset="1" stopColor={ink} stopOpacity="1" /></linearGradient>
+    </defs>
+    {/* Skyline: faint blocks with window grids that light up after dusk. */}
+    {buildings.map(([x, top, w]) => <g key={x}>
+      <rect x={x} y={top} width={w} height={630 - top} rx="8" fill={ink} opacity=".05" />
+      {Array.from({ length: Math.floor((600 - top) / 56) * Math.floor(w / 50) }, (_, i) => {
+        const cols = Math.floor(w / 50); const wx = x + 18 + (i % cols) * 50; const wy = top + 22 + Math.floor(i / cols) * 56;
+        return <rect key={i} x={wx} y={wy} width="22" height="26" rx="3" fill={(i * 7) % 5 < 2 ? 'var(--color-warning)' : ink} opacity=".04">
+          {(i * 7) % 5 < 2 && <animate attributeName="opacity" values={per((_, clock) => 0.04 + LIGHTS[clock] * 0.14)} {...ease} />}
+        </rect>;
+      })}
+    </g>)}
+    {/* Sidewalk, curb and road with a crosswalk. */}
+    <rect y="630" width="1600" height="132" fill={ink} opacity=".06" />
+    <rect y="756" width="1600" height="8" fill={ink} opacity=".1" />
+    <rect y="764" width="1600" height="136" fill={ink} opacity=".13" />
+    <path d="M0 832H1600" stroke="var(--color-background-surface)" strokeWidth="4" strokeDasharray="56 40" opacity=".6" />
+    {Array.from({ length: 6 }, (_, i) => <rect key={i} x={1140 + i * 30} y="770" width="16" height="124" fill="var(--color-background-surface)" opacity=".55" />)}
+    {/* Station entrance sign and trees along the curb. */}
+    <g transform="translate(520 586)"><rect width="8" height="170" x="20" y="0" fill={ink} opacity=".25" /><rect width="48" height="48" rx="10" fill="var(--color-accent)" opacity=".85" /><text x="24" y="33" fontSize="24" fontWeight="700" textAnchor="middle" fill="var(--color-background-surface)">역</text></g>
+    {[180, 380, 1090, 1460].map((x) => <g key={x} opacity=".16" fill={ink}><rect x={x - 4} y="690" width="8" height="66" /><circle cx={x} cy="676" r="30" /><circle cx={x - 20} cy="690" r="20" /><circle cx={x + 20} cy="690" r="20" /></g>)}
+    {/* Streetlights: glow at dusk and night. */}
+    {[460, 1060].map((x) => <g key={x}>
+      <rect x={x - 3} y="560" width="6" height="196" fill={ink} opacity=".22" /><rect x={x - 22} y="556" width="44" height="8" rx="4" fill={ink} opacity=".22" />
+      <circle cx={x} cy="600" r="120" fill="url(#hero-lamp)" opacity="0"><animate attributeName="opacity" values={per((_, clock) => LIGHTS[clock])} {...ease} /></circle>
+    </g>)}
+    <Car y={812} dur="9s" begin="0s" /><Car y={874} dur="7s" begin="-3s" width={130} reverse /><Car y={812} dur="11s" begin="-6s" width={170} />
     {/* Penalty cells: always red, darker and solid while the penalty holds. */}
-    {cells.map(([x, y]) => <rect key={`${x}-${y}`} x={x} y={y} width="60" height="52" fill={red} stroke={red}>
-      <animate attributeName="fill-opacity" values={per((s) => CELL[s].fill)} {...loop} />
-      <animate attributeName="stroke-dasharray" values={per((s) => CELL[s].dash)} {...loop} />
-      <animate attributeName="stroke-width" values={per((s) => CELL[s].width)} {...loop} />
+    {cells.map(([x, y]) => <rect key={`${x}-${y}`} x={x} y={y} width="60" height="50" rx="4" fill={red} stroke={red} fillOpacity={CELL.closed.fill}>
+      <animate attributeName="fill-opacity" values={per((s) => CELL[s].fill)} {...ease} />
+      <animate attributeName="stroke-width" values={per((s) => CELL[s].width)} {...ease} />
+      <animate attributeName="stroke-dasharray" values={perStep((s) => CELL[s].dash)} {...step} />
     </rect>)}
-    {/* Scooters parked in the cells once they open (two when partly open, five when open). */}
-    {[0, 1, 2, 3, 4].map((i) => <g key={i} transform={`translate(${618 + i * 80} 682)`} stroke={ink} strokeWidth="5" fill="none" strokeLinecap="round">
-      <animate attributeName="opacity" values={per((s) => (s === 'open' || (s === 'reduced' && i < 2) ? 0.7 : 0))} {...loop} />
-      <circle cy="30" r="8" /><circle cx="36" cy="30" r="8" /><path d="M0 24h28l-5-40H12M23-16h14" />
-    </g>)}
-    {always.map(([y, dur, begin]) => <Walker key={`a${begin}`} y={y} dur={dur} begin={begin} />)}
-    {busy.map(([y, dur, begin]) => <Walker key={`b${begin}`} y={y} dur={dur} begin={begin} show={(s) => (s === 'open' ? 0 : 1)} />)}
-    {crowd.map(([y, dur, begin]) => <Walker key={`c${begin}`} y={y} dur={dur} begin={begin} show={(s) => (s === 'closed' ? 1 : 0)} />)}
-    {/* Clock and verdict badge above the cells. */}
-    {/* Kept inside x 600–1000 so a portrait phone's crop still shows the whole badge. */}
-    <rect x="604" y="556" width="392" height="68" rx="34" fill="var(--color-background-surface)" opacity=".92" />
-    <text x="628" y="599" fontSize="20" fill={ink} opacity=".6">역삼역</text>
+    {/* A soft pulse around the area while the penalty holds. */}
+    <rect x="596" y="642" width="408" height="120" rx="10" fill="none" stroke={red} strokeWidth="3" opacity="0">
+      <animate attributeName="opacity" values={per((s) => (s === 'closed' ? 0.5 : 0))} {...ease} />
+    </rect>
+    {/* Scooters parked once the cells open: two when partly open, five when open. */}
+    {[0, 1, 2, 3, 4].map((i) => <Scooter key={i} x={618 + i * 80} y={668 + (i % 2) * 52} show={(s) => (s === 'open' || (s === 'reduced' && i < 2) ? 1 : 0)} />)}
+    {/* Pedestrians: a few always, more when busy, a crowd at the peaks; dimmer at night. */}
+    <Walker y={738} dur="22s" begin="0s" />
+    <Walker y={700} dur="26s" begin="-11s" scale={0.9} reverse />
+    {[[722, '18s', '-4s', false], [748, '20s', '-13s', true]].map(([y, dur, begin, reverse]) => <Walker key={begin} y={y} dur={dur} begin={begin} reverse={reverse} show={(s) => (s === 'open' ? 0 : 1)} />)}
+    {[[690, '15s', '-2s', false], [730, '16s', '-8s', true], [752, '14s', '-5s', false], [712, '17s', '-12s', true], [742, '13s', '-9s', false], [704, '19s', '-6s', true]].map(([y, dur, begin, reverse]) => <Walker key={begin} y={y} dur={dur} begin={begin} reverse={reverse} scale={0.95} show={(s) => (s === 'closed' ? 1 : 0)} />)}
+    {/* Dusk and night: darken only the street below the headline. */}
+    <rect y="520" width="1600" height="380" fill="url(#hero-fade)" opacity="0"><animate attributeName="opacity" values={per((_, clock) => NIGHT[clock] * 3)} {...ease} /></rect>
+    {/* Clock badge with the day's timeline; kept inside x 600–1000 so a portrait phone's crop shows all of it. */}
+    <rect x="604" y="534" width="392" height="96" rx="24" fill="var(--color-background-surface)" opacity=".94" />
+    <text x="628" y="574" fontSize="20" fill={ink} opacity=".6">역삼역</text>
     {PHASES.map(([clock, status], i) => <g key={clock} opacity={i === 0 ? 1 : 0}>
-      <animate attributeName="opacity" values={[...PHASES.map((_, j) => (j === i ? 1 : 0)), i === 0 ? 1 : 0].join(';')} {...loop} />
-      <text x="698" y="601" fontSize="30" fontWeight="700" fill={ink}>{clock}</text>
-      <text x="800" y="601" fontSize="27" fontWeight="700" fill={{ open: 'var(--color-text-success)', reduced: 'var(--color-text-warning)', closed: red }[status]}>{LABEL[status]}</text>
+      <animate attributeName="opacity" values={glide(PHASES.map((_, j) => (j === i ? 1 : 0)))} {...ease} />
+      <text x="698" y="576" fontSize="30" fontWeight="700" fill={ink}>{clock}</text>
+      <text x="800" y="576" fontSize="27" fontWeight="700" fill={STATUS_COLOR[status]}>{LABEL[status]}</text>
     </g>)}
+    <path d="M640 606H960" stroke={ink} strokeWidth="3" opacity=".15" strokeLinecap="round" />
+    {PHASES.map(([clock, status], i) => <g key={clock}>
+      <circle cx={640 + i * 80} cy="606" r="6" fill={STATUS_COLOR[status]} />
+      <text x={640 + i * 80} y="626" fontSize="13" textAnchor="middle" fill={ink} opacity=".5">{clock.slice(0, 2)}시</text>
+    </g>)}
+    <circle cx="0" cy="606" r="10" fill="none" stroke={ink} strokeWidth="3">
+      <animate attributeName="cx" values={glide(PHASES.map((_, i) => 640 + i * 80))} {...ease} />
+    </circle>
   </svg>;
 }
 
