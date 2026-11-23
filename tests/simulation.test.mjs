@@ -12,19 +12,27 @@ function arrive(state, mission) {
   command(state, { type: 'position', missionId: mission.id, point: mission.target, accuracy: 5, observedAt: state.now });
 }
 const done = (mission, verdict = 'approved') => ({ type: 'complete', missionId: mission.id, verdict, photoPresent: true });
+// The 강남구 hotspots are almost all 차도 tows, so protected and grace reasons are checked on extra areas placed over z2/z4 scooters.
+function withAreas(fn) {
+  const zone = (id) => createDemo().zones.find((z) => z.id === id).point;
+  const extra = [{ id: 'P', name: '보호구역 검증 구역', point: zone('z2'), radiusM: 30, types: { '보호구역(어린이·노인·장애인)': 1 } },
+    { id: 'G', name: '일반 보도 검증 구역', point: zone('z4'), radiusM: 30, types: { '상기 사항 외 보도': 1 } }];
+  demoTowingAreas.push(...extra);
+  try { return fn(); } finally { demoTowingAreas.splice(-extra.length); }
+}
 
-test('횡단보도 3m 견인 기기는 3m를 넘게 옮겨야 완료되고 보상은 한 번만 지급된다', () => {
+test('차도 견인 기기는 5m를 넘게 옮겨야 완료되고 보상은 한 번만 지급된다', () => {
   const state = createDemo();
   const offer = snapshot(state).offers.find((o) => o.id === 'PM-001');
-  assert.equal(offer.reason, '횡단보도 주변(3m)'); assert.equal(offer.destinations.length, 1);
+  assert.equal(offer.reason, '보도와 차도가 구분된 도로의 차도'); assert.equal(offer.destinations.length, 1);
   const [exit] = offer.destinations;
-  assert.ok(Math.abs(distanceM(exit.point, offer.point) - (3 + state.policy.exitMarginM)) < 0.5);
+  assert.ok(Math.abs(distanceM(exit.point, offer.point) - (5 + state.policy.exitMarginM)) < 0.5);
   const mission = accept(state);
-  assert.equal(mission.clearM, 3);
+  assert.equal(mission.clearM, 5);
   command(state, { type: 'position', missionId: mission.id, point: offer.point, accuracy: 5, observedAt: state.now });
-  assert.throws(() => command(state, done(mission)), /3m 넘게/);
+  assert.throws(() => command(state, done(mission)), /5m 넘게/);
   command(state, { type: 'position', missionId: mission.id, point: mission.target, accuracy: 25, observedAt: state.now });
-  assert.throws(() => command(state, done(mission)), /3m 넘게/);
+  assert.throws(() => command(state, done(mission)), /5m 넘게/);
   arrive(state, mission);
   command(state, done(mission)); command(state, done(mission));
   assert.equal(state.points, state.policy.reward);
@@ -48,10 +56,10 @@ test('경로를 따라 끌고 가는 중간 위치는 경보 없이 받고, 마�
   assert.equal(state.missions[0].status, 'completed');
 });
 
-test('견인 지점 기기는 실제 견인 사유를 받고, 즉시 견인 사유가 아니면 미션을 내지 않는다', () => {
+test('견인 지점 기기는 실제 견인 사유를 받고, 즉시 견인 사유가 아니면 미션을 내지 않는다', () => withAreas(() => {
   const view = snapshot(createDemo());
   const inside = view.scooters.filter((s) => s.towingArea);
-  assert.equal(inside.length, 13);
+  assert.equal(inside.length, 18);
   for (const s of inside) assert.ok(Object.hasOwn(demoTowingAreas.find((a) => s.towingArea === a.name).types, s.towingReason));
   assert.ok(demoTowingAreas.every((a) => Object.keys(a.types).every((reason) => towingRules[reason])));
   const grace = inside.filter((s) => s.towingKind === 'grace').map((s) => s.id);
@@ -62,9 +70,9 @@ test('견인 지점 기기는 실제 견인 사유를 받고, 즉시 견인 사�
     if (o.rule.kind === 'clear') assert.ok(d.id === 'exit' && d.distanceM === o.rule.clearM + demoPolicy.exitMarginM);
     else { assert.equal(o.rule.kind, 'protected'); assert.ok(o.operatorPickup && d.designated && d.distanceM > 100); }
   }
-});
+}));
 
-test('보호구역 기기는 운영사 수거 대상이면서 지정 주차구역까지 옮길 수 있고, 도착해야 완료된다', () => {
+test('보호구역 기기는 운영사 수거 대상이면서 지정 주차구역까지 옮길 수 있고, 도착해야 완료된다', () => withAreas(() => {
   const state = createDemo();
   const offer = snapshot(state).offers.find((o) => o.rule.kind === 'protected');
   const [zone] = offer.destinations;
@@ -80,7 +88,7 @@ test('보호구역 기기는 운영사 수거 대상이면서 지정 주차구�
   command(state, done(mission));
   assert.equal(state.missions[0].status, 'completed');
   assert.deepEqual(state.scooters.find((s) => s.id === offer.id).point, zone.point);
-});
+}));
 
 test('중복 수락과 견인 구역 밖 기기 수락을 거절한다', () => {
   const state = createDemo();

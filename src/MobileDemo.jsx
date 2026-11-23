@@ -19,8 +19,8 @@ import { distanceM, walkSteps } from '../server/engine.mjs';
 
 // Citizen app walk-through on synthetic data: scooters, unlock, GPS, photo check and points are all mock.
 const NEAR_M = 500;
-// Standpoints a short walk from the real towing hotspots, for viewers who are not in 관악구.
-const SPOTS = [{ label: '신림역 주변', point: [37.4848, 126.9282] }, { label: '봉천동 주변', point: [37.4800, 126.9430] }];
+// Standpoints a short walk from the real towing hotspots, for viewers who are not in 강남구.
+const SPOTS = [{ label: '역삼역 북서쪽', point: [37.5025, 127.0350] }, { label: '역삼역 남동쪽', point: [37.4985, 127.0410] }];
 const STEPS = ['킥보드 선택', '끌고 이동', '사진 확인'];
 // Demo walk: positions sent to the server one by one; the marker only glides to a point after the server accepted it.
 const WALK_STEPS = 4; const GLIDE_MS = 1200;
@@ -129,7 +129,7 @@ export default function MobileDemo() {
   const outside = firsts[0] && [firsts[0].bounds[2] + 0.0015, firsts[0].point[1]];
   const returnSpots = [...firsts.map((z) => ({ label: `${z.address.replace(/^서울특별시 \S+구 /, '')} (구역 안)`, point: z.point })),
     ...(outside && !(crowd?.zones ?? []).some((z) => inCell(outside, z.bounds)) ? [{ label: '구역 밖 (예시 위치)', point: outside }] : [])];
-  // Start the return demo inside the first 강남구 cell instead of the mission demo's 관악구 standpoint.
+  // Start the return demo inside the first 강남구 cell instead of the mission demo's 역삼역 standpoint.
   const firstSpot = returnSpots[0]?.label;
   useEffect(() => { if (firstSpot && me.label === SPOTS[0].label) setMe({ ...returnSpots[0], accuracy: 0 }); }, [firstSpot]); // eslint-disable-line react-hooks/exhaustive-deps
   const pickSpot = (spot) => { setMe({ ...spot, accuracy: 0 }); setReturned(null); takeShot(null); setMessage(''); };
@@ -262,7 +262,7 @@ export default function MobileDemo() {
       </VStack>
       <VStack padding={4} gap={4} isScrollable style={{ flex: 1, minHeight: 0 }} aria-label={mode === 'return' ? '반납 패널' : '미션 패널'}>
         {!active && <SegmentedControl label="기능" layout="fill" value={mode} onChange={(value) => {
-          // Each tab has its own demo area (return: 강남구 cells, mission: 관악구 scooters); my GPS position stays.
+          // Each tab has its own demo area (return: 강남구 cells, mission: 역삼역 scooters); my GPS position stays.
           const spots = value === 'mission' ? SPOTS : returnSpots;
           if (me.label !== '내 위치' && spots[0] && !spots.some((s) => s.label === me.label)) setMe({ ...spots[0], accuracy: 0 });
           setMode(value); setMessage('');
