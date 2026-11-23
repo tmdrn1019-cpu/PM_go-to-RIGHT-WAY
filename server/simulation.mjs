@@ -46,7 +46,7 @@ export function zonesAt(state, at = state.now) {
   return state.zones.map((zone) => {
     const result = evaluateZone(zone, at, state.profile);
     const parked = state.scooters.filter((s) => s.zoneId === zone.id).length;
-    return { ...zone, ...result, address: `관악구 ${zone.area} · 합성 시연 존`, boundary: square(zone.point), vehicleTypes: ['scooter'], parked, available: Math.max(0, result.capacity - parked), overflow: Math.max(0, parked - result.capacity),
+    return { ...zone, ...result, address: `강남구 ${zone.area} · 합성 시연 존`, boundary: square(zone.point), vehicleTypes: ['scooter'], parked, available: Math.max(0, result.capacity - parked), overflow: Math.max(0, parked - result.capacity),
       nextChange: nextScheduledChange(zone, at), observedAt: new Date(at).toISOString(), observationSource: '시연용 합성 시간대별 보행량' };
   });
 }
